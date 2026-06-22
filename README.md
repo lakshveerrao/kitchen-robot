@@ -46,7 +46,7 @@ Initial agents:
 source .venv/bin/activate
 pip install -e ".[dev]"
 cp .env.example .env
-PYTHONPATH=src python -m kitchen_robot --mock
+PYTHONPATH=src python -m kitchen_robot run --mock
 ```
 
 The first run uses mock mode so the orchestration loop can be tested before camera, voice, APIs, and ESP32 are connected.
@@ -71,19 +71,17 @@ PYTHONPATH=src .venv/bin/python -m kitchen_robot run --mock
 # Check camera capture without calling the AI API
 PYTHONPATH=src .venv/bin/python -m kitchen_robot camera-check --camera-index 0 --seconds 2
 
-# Scan for the ESP32 BLE device
-PYTHONPATH=src .venv/bin/python -m kitchen_robot ble-scan
+# Find the wired ESP32-C3 serial port
+PYTHONPATH=src .venv/bin/python -m kitchen_robot serial-scan
 
-# Safe ESP32 command: asks firmware for status, does not move the motor
-PYTHONPATH=src .venv/bin/python -m kitchen_robot stirrer-command status
+# Safe wired command: asks firmware for status, does not move the motor
+PYTHONPATH=src .venv/bin/python -m kitchen_robot wired-command status
 
 # Emergency stop
-PYTHONPATH=src .venv/bin/python -m kitchen_robot stirrer-command emergency_stop
+PYTHONPATH=src .venv/bin/python -m kitchen_robot wired-command emergency_stop
 ```
 
-If BLE scan times out on macOS, allow Bluetooth access for the terminal/Codex app in System Settings, then retry.
-
-`KitchenStirrer` is a BLE GATT device, not a headphone-style pairing device. It may not appear in the normal macOS/iPhone Bluetooth settings screen. Use the GUI BLE scan or a BLE scanner app such as nRF Connect to verify advertising.
+Wired USB serial is the primary Testing 1 motor-control path. Bluetooth is not required.
 
 The GUI opens at:
 
@@ -99,7 +97,7 @@ The initial firmware sketch lives in:
 firmware/esp32_stirrer_ble/esp32_stirrer_ble.ino
 ```
 
-ESP32-C3 supports BLE, so Testing 1 uses a BLE UART-style service rather than classic Bluetooth serial.
+Testing 1 uses USB serial as the primary control path. BLE support remains in the firmware as a secondary/debug path.
 
 Compile and upload to the ESP32-C3:
 
@@ -113,4 +111,31 @@ After upload, the ESP32 prints startup logs at `115200` baud. Look for:
 ```text
 KitchenStirrer booting
 KitchenStirrer BLE advertising started
+```
+
+The firmware accepts these USB serial commands at `115200` baud:
+
+```text
+status
+stop
+emergency_stop
+start_profile slow
+start_profile medium
+start_profile fast
+reverse
+start 2500
+```
+
+## API Key
+
+Do not paste API keys into chat. Put the key in a local `.env` file:
+
+```bash
+cp .env.example .env
+```
+
+Then edit `.env` and set:
+
+```text
+OPENAI_API_KEY=your_key_here
 ```

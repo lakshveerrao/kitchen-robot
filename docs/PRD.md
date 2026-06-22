@@ -19,7 +19,7 @@ Build a working prototype that can:
 3. Use an external camera for live video observation.
 4. Use an external mic for voice input.
 5. Speak through a Bose AUX speaker.
-6. Send Bluetooth commands to an ESP32-C3.
+6. Send wired USB serial commands to an ESP32-C3.
 7. Control a NEMA 17 stepper motor through an A4988 driver.
 8. Stop stirring immediately when safety requires it.
 
@@ -120,7 +120,7 @@ Responsibilities:
 
 Does not:
 
-- Send BLE commands.
+- Send motor commands directly.
 - Speak directly.
 - Read camera directly.
 - Control the motor directly.
@@ -293,14 +293,14 @@ Acceptance:
 
 - Mock flow speaks recipe steps and creates stir commands.
 
-### M3: ESP32 Firmware And BLE Commands
+### M3: ESP32 Firmware And Wired Commands
 
 Deliverables:
 
 - ESP32-C3 firmware sketch.
-- BLE service.
+- USB serial command parser.
 - Motor command parser.
-- Laptop BLE sender.
+- Laptop USB serial sender.
 
 Acceptance:
 
@@ -384,17 +384,17 @@ Completed:
 - Dependency install
 - Pytest, lint, and mock app verification
 - ESP32-C3 firmware compile and upload
-- Operator CLI commands for mock run, camera check, BLE scan, and stirrer command
+- Operator CLI commands for mock run, camera check, serial scan, and wired stirrer command
 - Local browser GUI for operator controls
-- BLE operator commands fail with a clear timeout instead of hanging when macOS Bluetooth access stalls
-- Part of M3 ESP32 Firmware And BLE Commands
+- USB serial auto-detect and wired stirrer commands
+- Part of M3 ESP32 Firmware And Wired Commands
 - Part of M4 Live Video Observation
 - Part of M5 Speech Output
 
 Not yet complete:
 
 - Real camera test
-- Real BLE command verification after upload
+- Real wired command verification after upload
 - Real TTS audio test
 - Wake-word and STT
 - Safety vision implementation

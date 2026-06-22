@@ -2,15 +2,21 @@ import argparse
 import asyncio
 
 from kitchen_robot.config import Settings
-from kitchen_robot.gui import add_gui_parser, run_gui
-from kitchen_robot.operator import ble_scan, camera_check, stirrer_command
-from kitchen_robot.orchestrator import Orchestrator
+from kitchen_robot.operator import (
+    ble_scan,
+    camera_check,
+    serial_scan,
+    stirrer_command,
+    wired_stirrer_command,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Kitchen Robot Testing 1 runner")
     subparsers = parser.add_subparsers(dest="command")
-    add_gui_parser(subparsers)
+    gui_parser = subparsers.add_parser("gui", help="Run the local browser GUI")
+    gui_parser.add_argument("--host", default="127.0.0.1")
+    gui_parser.add_argument("--port", type=int, default=8787)
 
     run_parser = subparsers.add_parser("run", help="Run the orchestrator")
     run_parser.add_argument("--mock", action="store_true", help="Run without real camera, APIs, voice, or BLE")
@@ -31,6 +37,19 @@ def build_parser() -> argparse.ArgumentParser:
         default="status",
     )
     stirrer_parser.add_argument("--value", default=None, help="Profile name or delay value")
+
+    serial_scan_parser = subparsers.add_parser("serial-scan", help="Find wired ESP32 serial ports")
+    serial_scan_parser.set_defaults(_serial_scan=True)
+
+    wired_parser = subparsers.add_parser("wired-command", help="Send one command over USB serial")
+    wired_parser.add_argument(
+        "wired_command",
+        choices=["status", "stop", "emergency_stop", "reverse", "start_profile", "start_delay"],
+        nargs="?",
+        default="status",
+    )
+    wired_parser.add_argument("--value", default=None, help="Profile name or delay value")
+    wired_parser.add_argument("--port", default=None, help="Serial port override")
     return parser
 
 
@@ -40,6 +59,8 @@ async def async_main() -> int:
     settings = Settings.from_env(mock=getattr(args, "mock", False))
 
     if command == "gui":
+        from kitchen_robot.gui import run_gui
+
         run_gui(args.host, args.port)
         return 0
 
@@ -56,6 +77,14 @@ async def async_main() -> int:
 
     if command == "stirrer-command":
         return await stirrer_command(settings, args.stirrer_command, args.value)
+
+    if command == "serial-scan":
+        return await serial_scan()
+
+    if command == "wired-command":
+        return await wired_stirrer_command(args.wired_command, args.value, port=args.port)
+
+    from kitchen_robot.orchestrator import Orchestrator
 
     orchestrator = Orchestrator(settings=settings, recipe_id=args.recipe)
     await orchestrator.run()

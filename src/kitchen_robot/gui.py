@@ -9,7 +9,13 @@ from typing import Any
 from urllib.parse import urlparse
 
 from kitchen_robot.config import Settings
-from kitchen_robot.operator import ble_scan, camera_check, stirrer_command
+from kitchen_robot.operator import (
+    ble_scan,
+    camera_check,
+    serial_scan,
+    stirrer_command,
+    wired_stirrer_command,
+)
 
 
 INDEX_HTML = """<!doctype html>
@@ -188,7 +194,7 @@ INDEX_HTML = """<!doctype html>
       </div>
       <div class="grid">
         <button data-action="camera-check">Check Camera</button>
-        <button data-action="ble-scan">Scan BLE</button>
+        <button data-action="serial-scan">Find Wired ESP32</button>
       </div>
     </section>
 
@@ -209,12 +215,12 @@ INDEX_HTML = """<!doctype html>
         </div>
       </div>
       <div class="grid">
-        <button data-action="stir-status">Status</button>
-        <button data-action="stir-stop" class="warn">Stop</button>
-        <button data-action="stir-start-profile" class="primary">Start Profile</button>
-        <button data-action="stir-reverse">Reverse</button>
-        <button data-action="stir-start-delay">Start Delay</button>
-        <button data-action="stir-emergency" class="danger">Emergency Stop</button>
+        <button data-action="wired-status">Status</button>
+        <button data-action="wired-stop" class="warn">Stop</button>
+        <button data-action="wired-start-profile" class="primary">Start Profile</button>
+        <button data-action="wired-reverse">Reverse</button>
+        <button data-action="wired-start-delay">Start Delay</button>
+        <button data-action="wired-emergency" class="danger">Emergency Stop</button>
       </div>
     </section>
 
@@ -229,10 +235,9 @@ INDEX_HTML = """<!doctype html>
     <section class="wide">
       <h2>Setup Notes</h2>
       <div style="color: var(--muted); font-size: 14px; line-height: 1.55;">
-        <strong>KitchenStirrer</strong> is a BLE device, so it may not appear in the normal Bluetooth settings list.
-        Use this BLE scan or a BLE scanner app. If scan cannot find it, check macOS Bluetooth permission for this app,
-        confirm the ESP32 is powered, and use Serial Monitor at <strong>115200 baud</strong> to verify the firmware says
-        <strong>KitchenStirrer BLE advertising started</strong>.
+        Wired mode is the primary Testing 1 path. Keep the ESP32-C3 connected over USB. The app auto-detects the
+        Espressif serial port and sends commands at <strong>115200 baud</strong>. Use <strong>Find Wired ESP32</strong>
+        first, then <strong>Status</strong>.
       </div>
     </section>
 
@@ -338,12 +343,19 @@ class KitchenRobotRequestHandler(BaseHTTPRequestHandler):
             "/api/mock-run": self._mock_run,
             "/api/camera-check": self._camera_check,
             "/api/ble-scan": self._ble_scan,
+            "/api/serial-scan": self._serial_scan,
             "/api/stir-status": lambda data: self._stirrer(data, "status"),
             "/api/stir-stop": lambda data: self._stirrer(data, "stop"),
             "/api/stir-emergency": lambda data: self._stirrer(data, "emergency_stop"),
             "/api/stir-reverse": lambda data: self._stirrer(data, "reverse"),
             "/api/stir-start-profile": self._stirrer_profile,
             "/api/stir-start-delay": self._stirrer_delay,
+            "/api/wired-status": lambda data: self._wired_stirrer(data, "status"),
+            "/api/wired-stop": lambda data: self._wired_stirrer(data, "stop"),
+            "/api/wired-emergency": lambda data: self._wired_stirrer(data, "emergency_stop"),
+            "/api/wired-reverse": lambda data: self._wired_stirrer(data, "reverse"),
+            "/api/wired-start-profile": self._wired_stirrer_profile,
+            "/api/wired-start-delay": self._wired_stirrer_delay,
         }
 
         handler = routes.get(parsed.path)
@@ -385,6 +397,12 @@ class KitchenRobotRequestHandler(BaseHTTPRequestHandler):
 
         return _capture_async(run())
 
+    def _serial_scan(self, payload: dict[str, Any]) -> dict[str, Any]:
+        async def run() -> int:
+            return await serial_scan()
+
+        return _capture_async(run())
+
     def _stirrer_profile(self, payload: dict[str, Any]) -> dict[str, Any]:
         profile = str(payload.get("profile") or "slow")
         return self._stirrer(payload, "start_profile", profile)
@@ -392,6 +410,14 @@ class KitchenRobotRequestHandler(BaseHTTPRequestHandler):
     def _stirrer_delay(self, payload: dict[str, Any]) -> dict[str, Any]:
         delay = str(payload.get("delay") or "2500")
         return self._stirrer(payload, "start_delay", delay)
+
+    def _wired_stirrer_profile(self, payload: dict[str, Any]) -> dict[str, Any]:
+        profile = str(payload.get("profile") or "slow")
+        return self._wired_stirrer(payload, "start_profile", profile)
+
+    def _wired_stirrer_delay(self, payload: dict[str, Any]) -> dict[str, Any]:
+        delay = str(payload.get("delay") or "2500")
+        return self._wired_stirrer(payload, "start_delay", delay)
 
     def _stirrer(
         self,
@@ -402,6 +428,17 @@ class KitchenRobotRequestHandler(BaseHTTPRequestHandler):
         async def run() -> int:
             settings = Settings.from_env(mock=False)
             return await stirrer_command(settings, command, value)
+
+        return _capture_async(run())
+
+    def _wired_stirrer(
+        self,
+        payload: dict[str, Any],
+        command: str,
+        value: str | None = None,
+    ) -> dict[str, Any]:
+        async def run() -> int:
+            return await wired_stirrer_command(command, value)
 
         return _capture_async(run())
 

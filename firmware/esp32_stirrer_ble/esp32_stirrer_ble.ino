@@ -19,6 +19,7 @@ static const int DIR_PIN = 5;
 static const int ENABLE_PIN = 6;
 
 BLECharacteristic *txCharacteristic;
+String serialCommandBuffer = "";
 
 volatile bool motorEnabled = false;
 volatile bool directionClockwise = true;
@@ -95,6 +96,26 @@ void handleCommand(String command) {
   sendStatus("ERR UNKNOWN_COMMAND");
 }
 
+void readSerialCommands() {
+  while (Serial.available() > 0) {
+    char incoming = static_cast<char>(Serial.read());
+    if (incoming == '\n' || incoming == '\r') {
+      if (serialCommandBuffer.length() > 0) {
+        handleCommand(serialCommandBuffer);
+        serialCommandBuffer = "";
+      }
+      continue;
+    }
+
+    if (serialCommandBuffer.length() < 120) {
+      serialCommandBuffer += incoming;
+    } else {
+      serialCommandBuffer = "";
+      sendStatus("ERR COMMAND_TOO_LONG");
+    }
+  }
+}
+
 class RxCallbacks : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic *characteristic) override {
     String value = characteristic->getValue().c_str();
@@ -149,6 +170,8 @@ void setup() {
 }
 
 void loop() {
+  readSerialCommands();
+
   if (!motorEnabled) {
     delay(10);
     return;

@@ -5,6 +5,11 @@ from typing import Any
 
 from kitchen_robot.config import Settings
 from kitchen_robot.services.video import LiveVideoWindow
+from kitchen_robot.transports.serial_wire import (
+    Esp32SerialClient,
+    detect_esp32_port,
+    list_serial_devices,
+)
 from kitchen_robot.transports.ble import Esp32BleClient, payload_from_cli_command, serialize_stir_command
 
 
@@ -62,6 +67,30 @@ async def stirrer_command(settings: Settings, command: str, value: str | None) -
 
     print(result["message"])
     return 0
+
+
+async def serial_scan() -> int:
+    devices = list_serial_devices()
+    if not devices:
+        print("no serial devices found")
+        return 1
+
+    detected = detect_esp32_port()
+    for device in devices:
+        marker = " <-- auto" if device.port == detected else ""
+        print(f"{device.port} | {device.description} | {device.hwid}{marker}")
+    return 0 if detected else 2
+
+
+async def wired_stirrer_command(command: str, value: str | None, port: str | None = None) -> int:
+    payload = payload_from_cli_command(command, value)
+    serialized = serialize_stir_command(payload)
+    client = Esp32SerialClient(port=port)
+    print(f"sending over USB serial: {serialized}")
+    result = client.send_command(serialized)
+    print(f"port: {result.port or 'none'}")
+    print(result.message)
+    return 0 if result.ok else 1
 
 
 def _run_ble_worker(worker: Any, args: tuple[Any, ...], timeout: float) -> dict[str, Any]:
