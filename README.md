@@ -83,6 +83,8 @@ PYTHONPATH=src .venv/bin/python -m kitchen_robot stirrer-command emergency_stop
 
 If BLE scan times out on macOS, allow Bluetooth access for the terminal/Codex app in System Settings, then retry.
 
+`KitchenStirrer` is a BLE GATT device, not a headphone-style pairing device. It may not appear in the normal macOS/iPhone Bluetooth settings screen. Use the GUI BLE scan or a BLE scanner app such as nRF Connect to verify advertising.
+
 The GUI opens at:
 
 ```text

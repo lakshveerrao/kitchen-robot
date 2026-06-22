@@ -229,7 +229,8 @@ INDEX_HTML = """<!doctype html>
     <section class="wide">
       <h2>Setup Notes</h2>
       <div style="color: var(--muted); font-size: 14px; line-height: 1.55;">
-        If BLE scan cannot find <strong>KitchenStirrer</strong>, check macOS Bluetooth permission for this app,
+        <strong>KitchenStirrer</strong> is a BLE device, so it may not appear in the normal Bluetooth settings list.
+        Use this BLE scan or a BLE scanner app. If scan cannot find it, check macOS Bluetooth permission for this app,
         confirm the ESP32 is powered, and use Serial Monitor at <strong>115200 baud</strong> to verify the firmware says
         <strong>KitchenStirrer BLE advertising started</strong>.
       </div>

@@ -3,6 +3,7 @@
 #include <BLEServer.h>
 #include <BLEUtils.h>
 #include <BLE2902.h>
+#include <BLEAdvertising.h>
 
 // Testing 1 ESP32-C3 BLE stirrer firmware.
 // Board: ESP32-C3
@@ -129,6 +130,16 @@ void setup() {
 
   service->start();
   BLEAdvertising *advertising = BLEDevice::getAdvertising();
+
+  BLEAdvertisementData advertisementData;
+  advertisementData.setName(DEVICE_NAME);
+  advertisementData.setCompleteServices(BLEUUID(SERVICE_UUID));
+  advertising->setAdvertisementData(advertisementData);
+
+  BLEAdvertisementData scanResponseData;
+  scanResponseData.setName(DEVICE_NAME);
+  advertising->setScanResponseData(scanResponseData);
+
   advertising->addServiceUUID(SERVICE_UUID);
   advertising->setName(DEVICE_NAME);
   advertising->setScanResponse(true);
