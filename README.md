@@ -105,3 +105,10 @@ Compile and upload to the ESP32-C3:
 arduino-cli compile --fqbn "esp32:esp32:esp32c3:CDCOnBoot=cdc" firmware/esp32_stirrer_ble
 arduino-cli upload -p /dev/cu.usbmodem21101 --fqbn "esp32:esp32:esp32c3:CDCOnBoot=cdc" firmware/esp32_stirrer_ble
 ```
+
+After upload, the ESP32 prints startup logs at `115200` baud. Look for:
+
+```text
+KitchenStirrer booting
+KitchenStirrer BLE advertising started
+```

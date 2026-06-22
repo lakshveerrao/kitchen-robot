@@ -10,7 +10,6 @@ from urllib.parse import urlparse
 
 from kitchen_robot.config import Settings
 from kitchen_robot.operator import ble_scan, camera_check, stirrer_command
-from kitchen_robot.orchestrator import Orchestrator
 
 
 INDEX_HTML = """<!doctype html>
@@ -228,6 +227,15 @@ INDEX_HTML = """<!doctype html>
     </section>
 
     <section class="wide">
+      <h2>Setup Notes</h2>
+      <div style="color: var(--muted); font-size: 14px; line-height: 1.55;">
+        If BLE scan cannot find <strong>KitchenStirrer</strong>, check macOS Bluetooth permission for this app,
+        confirm the ESP32 is powered, and use Serial Monitor at <strong>115200 baud</strong> to verify the firmware says
+        <strong>KitchenStirrer BLE advertising started</strong>.
+      </div>
+    </section>
+
+    <section class="wide">
       <h2>Log</h2>
       <pre id="log">Waiting for command...</pre>
     </section>
@@ -350,6 +358,8 @@ class KitchenRobotRequestHandler(BaseHTTPRequestHandler):
 
     def _mock_run(self, payload: dict[str, Any]) -> dict[str, Any]:
         async def run() -> int:
+            from kitchen_robot.orchestrator import Orchestrator
+
             settings = Settings.from_env(mock=True)
             orchestrator = Orchestrator(settings=settings, recipe_id="upma")
             await orchestrator.run()

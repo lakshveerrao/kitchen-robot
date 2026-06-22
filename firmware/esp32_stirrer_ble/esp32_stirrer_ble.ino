@@ -25,6 +25,7 @@ volatile uint32_t stepDelayMicros = 2500;
 uint32_t lastStepMicros = 0;
 
 void sendStatus(const String &message) {
+  Serial.println(message);
   if (txCharacteristic != nullptr) {
     txCharacteristic->setValue(message.c_str());
     txCharacteristic->notify();
@@ -101,6 +102,10 @@ class RxCallbacks : public BLECharacteristicCallbacks {
 };
 
 void setup() {
+  Serial.begin(115200);
+  delay(500);
+  Serial.println("KitchenStirrer booting");
+
   pinMode(STEP_PIN, OUTPUT);
   pinMode(DIR_PIN, OUTPUT);
   pinMode(ENABLE_PIN, OUTPUT);
@@ -125,8 +130,11 @@ void setup() {
   service->start();
   BLEAdvertising *advertising = BLEDevice::getAdvertising();
   advertising->addServiceUUID(SERVICE_UUID);
+  advertising->setName(DEVICE_NAME);
   advertising->setScanResponse(true);
   advertising->start();
+  Serial.println("KitchenStirrer BLE advertising started");
+  Serial.println("Device name: KitchenStirrer");
 }
 
 void loop() {
