@@ -1,6 +1,6 @@
 from collections import deque
 
-from kitchen_robot.agents.esp32_ble import Esp32BleAgent
+from kitchen_robot.agents.esp32_serial import Esp32SerialAgent
 from kitchen_robot.agents.recipe import RecipeAgent
 from kitchen_robot.agents.reasoning import MainReasoningAgent
 from kitchen_robot.agents.safety import SafetyAgent
@@ -21,7 +21,7 @@ class Orchestrator:
             AgentName.SPEECH: SpeechAgent(settings),
             AgentName.STIRRING: StirringAgent(),
             AgentName.VISION: VisionAgent(settings),
-            AgentName.ESP32_BLE: Esp32BleAgent(settings),
+            AgentName.ESP32_SERIAL: Esp32SerialAgent(settings),
             AgentName.SAFETY: SafetyAgent(),
             AgentName.VOICE_LISTEN: VoiceListenAgent(),
         }
@@ -54,4 +54,3 @@ class Orchestrator:
                 queue.extend(followups)
 
         print("[orchestrator] session loop ended")
-

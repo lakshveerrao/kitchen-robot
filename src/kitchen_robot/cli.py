@@ -19,7 +19,11 @@ def build_parser() -> argparse.ArgumentParser:
     gui_parser.add_argument("--port", type=int, default=8787)
 
     run_parser = subparsers.add_parser("run", help="Run the orchestrator")
-    run_parser.add_argument("--mock", action="store_true", help="Run without real camera, APIs, voice, or BLE")
+    run_parser.add_argument(
+        "--mock",
+        action="store_true",
+        help="Run without real camera, APIs, voice, or wired motor control",
+    )
     run_parser.add_argument("--recipe", default="upma", choices=["upma"], help="Recipe to run")
 
     camera_parser = subparsers.add_parser("camera-check", help="Capture a short video window")

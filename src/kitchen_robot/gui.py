@@ -229,6 +229,7 @@ INDEX_HTML = """<!doctype html>
       <h2>Session</h2>
       <div class="grid">
         <button data-action="mock-run" class="primary">Run Mock Recipe</button>
+        <button data-action="v1-wired-run" class="warn">Run V1 Wired Session</button>
         <button data-action="clear-log">Clear Log</button>
       </div>
     </section>
@@ -342,6 +343,7 @@ class KitchenRobotRequestHandler(BaseHTTPRequestHandler):
 
         routes = {
             "/api/mock-run": self._mock_run,
+            "/api/v1-wired-run": self._v1_wired_run,
             "/api/camera-check": self._camera_check,
             "/api/api-check": self._api_check,
             "/api/ble-scan": self._ble_scan,
@@ -376,6 +378,17 @@ class KitchenRobotRequestHandler(BaseHTTPRequestHandler):
             from kitchen_robot.orchestrator import Orchestrator
 
             settings = Settings.from_env(mock=True)
+            orchestrator = Orchestrator(settings=settings, recipe_id="upma")
+            await orchestrator.run()
+            return 0
+
+        return _capture_async(run())
+
+    def _v1_wired_run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        async def run() -> int:
+            from kitchen_robot.orchestrator import Orchestrator
+
+            settings = Settings.from_env(mock=False)
             orchestrator = Orchestrator(settings=settings, recipe_id="upma")
             await orchestrator.run()
             return 0

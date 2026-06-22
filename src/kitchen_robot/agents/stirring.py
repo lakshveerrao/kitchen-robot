@@ -9,7 +9,7 @@ class StirringAgent(Agent):
                 AgentEvent(
                     event_type=EventType.STIR_COMMAND,
                     source=AgentName.STIRRING,
-                    target=AgentName.ESP32_BLE,
+                    target=AgentName.ESP32_SERIAL,
                     payload={"type": "emergency_stop"},
                 )
             ]
@@ -27,7 +27,7 @@ class StirringAgent(Agent):
             AgentEvent(
                 event_type=EventType.STIR_COMMAND,
                 source=AgentName.STIRRING,
-                target=AgentName.ESP32_BLE,
+                target=AgentName.ESP32_SERIAL,
                 payload=command,
             )
         ]

@@ -4,16 +4,17 @@ from queue import Empty
 from typing import Any
 
 from kitchen_robot.config import Settings
-from kitchen_robot.services.video import LiveVideoWindow
 from kitchen_robot.transports.serial_wire import (
     Esp32SerialClient,
     detect_esp32_port,
     list_serial_devices,
 )
-from kitchen_robot.transports.ble import Esp32BleClient, payload_from_cli_command, serialize_stir_command
+from kitchen_robot.transports.ble import payload_from_cli_command, serialize_stir_command
 
 
 async def camera_check(settings: Settings) -> int:
+    from kitchen_robot.services.video import LiveVideoWindow
+
     video = LiveVideoWindow(settings)
     frames = video.capture_jpeg_window()
     print(
@@ -113,6 +114,8 @@ def _run_ble_worker(worker: Any, args: tuple[Any, ...], timeout: float) -> dict[
 
 def _ble_scan_worker(settings: Settings, timeout: float, queue: Queue) -> None:
     async def run() -> None:
+        from kitchen_robot.transports.ble import Esp32BleClient
+
         client = Esp32BleClient(settings.ble_device_name)
         devices = await client.scan(timeout=timeout)
         queue.put({"ok": True, "devices": devices})
@@ -125,6 +128,8 @@ def _ble_scan_worker(settings: Settings, timeout: float, queue: Queue) -> None:
 
 def _ble_command_worker(settings: Settings, command: str, queue: Queue) -> None:
     async def run() -> None:
+        from kitchen_robot.transports.ble import Esp32BleClient
+
         client = Esp32BleClient(settings.ble_device_name)
         result = await client.send_command(command)
         queue.put({"ok": result.ok, "message": result.message})

@@ -15,6 +15,7 @@ class AgentName(str, Enum):
     SPEECH = "speech"
     STIRRING = "stirring"
     ESP32_BLE = "esp32_ble"
+    ESP32_SERIAL = "esp32_serial"
 
 
 class EventType(str, Enum):
@@ -38,4 +39,3 @@ class AgentEvent:
     target: AgentName | None = None
     event_id: str = field(default_factory=lambda: str(uuid4()))
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
-

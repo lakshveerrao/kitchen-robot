@@ -174,13 +174,13 @@ Responsibilities:
 - Chooses high-level commands like slow/medium/stop.
 - Sends emergency stop when safety requires it.
 
-### ESP32 BLE Agent
+### ESP32 Wired Serial Agent
 
 Responsibilities:
 
-- Connects to ESP32 over BLE.
+- Connects to ESP32 over USB serial.
 - Sends serialized motor commands.
-- Receives status where available.
+- Receives status responses.
 
 ## 8. Voice Requirements
 
@@ -246,7 +246,7 @@ The robot must stop stirring when:
 
 - A hand comes near pan boundaries.
 - Emergency stop is triggered.
-- ESP32/BLE status is unsafe or unknown.
+- ESP32 wired serial status is unsafe or unknown.
 - Vision confidence is too low for an automatic action.
 
 Motor current and A4988 current limit must be tested carefully before cooking with load.
@@ -358,7 +358,7 @@ Acceptance:
 Deliverables:
 
 - Run without heat or food.
-- Camera, voice, BLE, and motor tested together.
+- Camera, voice, wired serial, and motor tested together.
 
 Acceptance:
 

@@ -36,7 +36,7 @@ Initial agents:
 - Safety Agent
 - Recipe Agent
 - Stirring Agent
-- ESP32 BLE Agent
+- ESP32 Wired Serial Agent
 - Main Reasoning Agent
 
 ## Quick Start
