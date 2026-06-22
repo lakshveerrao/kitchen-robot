@@ -195,6 +195,7 @@ INDEX_HTML = """<!doctype html>
       <div class="grid">
         <button data-action="camera-check">Check Camera</button>
         <button data-action="serial-scan">Find Wired ESP32</button>
+        <button data-action="api-check">Check API Key</button>
       </div>
     </section>
 
@@ -342,6 +343,7 @@ class KitchenRobotRequestHandler(BaseHTTPRequestHandler):
         routes = {
             "/api/mock-run": self._mock_run,
             "/api/camera-check": self._camera_check,
+            "/api/api-check": self._api_check,
             "/api/ble-scan": self._ble_scan,
             "/api/serial-scan": self._serial_scan,
             "/api/stir-status": lambda data: self._stirrer(data, "status"),
@@ -389,6 +391,24 @@ class KitchenRobotRequestHandler(BaseHTTPRequestHandler):
             return await camera_check(settings)
 
         return _capture_async(run())
+
+    def _api_check(self, payload: dict[str, Any]) -> dict[str, Any]:
+        settings = Settings.from_env(mock=False)
+        key = settings.openai_api_key or ""
+        if not key:
+            return {"ok": False, "output": "OPENAI_API_KEY is missing from .env"}
+        if not key.startswith("sk-"):
+            return {"ok": False, "output": "OPENAI_API_KEY is present but does not look valid"}
+        return {
+            "ok": True,
+            "output": (
+                "OPENAI_API_KEY is configured.\n"
+                f"Reasoning model: {settings.reasoning_model}\n"
+                f"Vision model: {settings.vision_model}\n"
+                f"STT model: {settings.stt_model}\n"
+                f"TTS model: {settings.tts_model}"
+            ),
+        }
 
     def _ble_scan(self, payload: dict[str, Any]) -> dict[str, Any]:
         async def run() -> int:
