@@ -2,6 +2,7 @@ import argparse
 import asyncio
 
 from kitchen_robot.config import Settings
+from kitchen_robot.gui import add_gui_parser, run_gui
 from kitchen_robot.operator import ble_scan, camera_check, stirrer_command
 from kitchen_robot.orchestrator import Orchestrator
 
@@ -9,6 +10,7 @@ from kitchen_robot.orchestrator import Orchestrator
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Kitchen Robot Testing 1 runner")
     subparsers = parser.add_subparsers(dest="command")
+    add_gui_parser(subparsers)
 
     run_parser = subparsers.add_parser("run", help="Run the orchestrator")
     run_parser.add_argument("--mock", action="store_true", help="Run without real camera, APIs, voice, or BLE")
@@ -36,6 +38,10 @@ async def async_main() -> int:
     args = build_parser().parse_args()
     command = args.command or "run"
     settings = Settings.from_env(mock=getattr(args, "mock", False))
+
+    if command == "gui":
+        run_gui(args.host, args.port)
+        return 0
 
     if getattr(args, "camera_index", None) is not None:
         settings = settings.with_overrides(camera_index=args.camera_index)

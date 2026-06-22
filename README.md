@@ -62,6 +62,9 @@ PYTHONPATH=src .venv/bin/python -m kitchen_robot run --mock
 ## Operator Commands
 
 ```bash
+# Start the local GUI
+PYTHONPATH=src .venv/bin/python -m kitchen_robot gui
+
 # Run the mock orchestrator
 PYTHONPATH=src .venv/bin/python -m kitchen_robot run --mock
 
@@ -79,6 +82,12 @@ PYTHONPATH=src .venv/bin/python -m kitchen_robot stirrer-command emergency_stop
 ```
 
 If BLE scan times out on macOS, allow Bluetooth access for the terminal/Codex app in System Settings, then retry.
+
+The GUI opens at:
+
+```text
+http://127.0.0.1:8787
+```
 
 ## ESP32 Firmware
 

@@ -385,6 +385,7 @@ Completed:
 - Pytest, lint, and mock app verification
 - ESP32-C3 firmware compile and upload
 - Operator CLI commands for mock run, camera check, BLE scan, and stirrer command
+- Local browser GUI for operator controls
 - BLE operator commands fail with a clear timeout instead of hanging when macOS Bluetooth access stalls
 - Part of M3 ESP32 Firmware And BLE Commands
 - Part of M4 Live Video Observation
