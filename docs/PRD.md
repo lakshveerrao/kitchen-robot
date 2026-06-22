@@ -2,7 +2,7 @@
 
 ## 1. Product Summary
 
-Kitchen Robot Testing 1 is a laptop-run proof of concept for a voice-first cooking assistant. It guides a human through a fixed upma recipe, observes the kadai using live video, and controls a stirrer through an ESP32-S3.
+Kitchen Robot Testing 1 is a laptop-run proof of concept for a voice-first cooking assistant. It guides a human through a fixed upma recipe, observes the kadai using live video, and controls a stirrer through an ESP32-C3.
 
 Testing 1 is not the final product. It proves the core loop:
 
@@ -19,7 +19,7 @@ Build a working prototype that can:
 3. Use an external camera for live video observation.
 4. Use an external mic for voice input.
 5. Speak through a Bose AUX speaker.
-6. Send Bluetooth commands to an ESP32-S3.
+6. Send Bluetooth commands to an ESP32-C3.
 7. Control a NEMA 17 stepper motor through an A4988 driver.
 8. Stop stirring immediately when safety requires it.
 
@@ -74,7 +74,7 @@ The robot:
 
 ### Robot Side
 
-- ESP32-S3 DevKit N16R8
+- ESP32-C3
 - NEMA 17 stepper motor
 - A4988 stepper driver
 - 12V 2500mAh LiPo battery
@@ -297,7 +297,7 @@ Acceptance:
 
 Deliverables:
 
-- ESP32-S3 firmware sketch.
+- ESP32-C3 firmware sketch.
 - BLE service.
 - Motor command parser.
 - Laptop BLE sender.
@@ -383,15 +383,17 @@ Completed:
 - Project virtual environment setup
 - Dependency install
 - Pytest, lint, and mock app verification
+- ESP32-C3 firmware compile and upload
+- Operator CLI commands for mock run, camera check, BLE scan, and stirrer command
+- BLE operator commands fail with a clear timeout instead of hanging when macOS Bluetooth access stalls
 - Part of M3 ESP32 Firmware And BLE Commands
 - Part of M4 Live Video Observation
 - Part of M5 Speech Output
 
 Not yet complete:
 
-- ESP32 flashing
-- Real BLE board test
 - Real camera test
+- Real BLE command verification after upload
 - Real TTS audio test
 - Wake-word and STT
 - Safety vision implementation

@@ -4,8 +4,8 @@
 #include <BLEUtils.h>
 #include <BLE2902.h>
 
-// Testing 1 ESP32-S3 BLE stirrer firmware.
-// Board: ESP32-S3 DevKit N16R8
+// Testing 1 ESP32-C3 BLE stirrer firmware.
+// Board: ESP32-C3
 // Motor: NEMA 17 through A4988
 
 static const char *DEVICE_NAME = "KitchenStirrer";
@@ -143,4 +143,3 @@ void loop() {
     digitalWrite(STEP_PIN, LOW);
   }
 }
-

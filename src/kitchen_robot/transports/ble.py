@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Any
 
 
 SERVICE_UUID = "8a4f1000-0b38-4f4d-8b5f-6e5d7f0c1000"
@@ -10,6 +11,13 @@ TX_UUID = "8a4f1002-0b38-4f4d-8b5f-6e5d7f0c1000"
 class BleCommandResult:
     ok: bool
     message: str
+
+
+@dataclass(frozen=True)
+class BleDeviceInfo:
+    name: str | None
+    address: str
+    rssi: int | None
 
 
 def serialize_stir_command(payload: dict) -> str:
@@ -42,6 +50,24 @@ class Esp32BleClient:
     def __init__(self, device_name: str) -> None:
         self.device_name = device_name
 
+    async def scan(self, timeout: float = 5.0) -> list[BleDeviceInfo]:
+        try:
+            from bleak import BleakScanner
+        except ModuleNotFoundError as exc:
+            raise RuntimeError("Install the 'bleak' package to use ESP32 BLE control.") from exc
+
+        devices = await BleakScanner.discover(timeout=timeout, return_adv=True)
+        results: list[BleDeviceInfo] = []
+        for device, advertisement in devices.values():
+            results.append(
+                BleDeviceInfo(
+                    name=device.name or advertisement.local_name,
+                    address=device.address,
+                    rssi=getattr(advertisement, "rssi", None),
+                )
+            )
+        return sorted(results, key=lambda item: (item.name or "", item.address))
+
     async def send_command(self, command: str) -> BleCommandResult:
         try:
             from bleak import BleakClient, BleakScanner
@@ -58,3 +84,17 @@ class Esp32BleClient:
             await client.write_gatt_char(RX_UUID, command.encode("utf-8"), response=False)
             return BleCommandResult(ok=True, message=f"sent: {command}")
 
+
+def payload_from_cli_command(command: str, value: str | None = None) -> dict[str, Any]:
+    if command in {"status", "stop", "emergency_stop", "reverse"}:
+        return {"type": command}
+
+    if command == "start_profile":
+        return {"type": "start_profile", "profile": value or "slow"}
+
+    if command == "start_delay":
+        if value is None:
+            raise ValueError("start_delay requires a delay value in microseconds")
+        return {"type": "start_delay", "delay_micros": int(value)}
+
+    raise ValueError(f"Unsupported CLI command: {command}")

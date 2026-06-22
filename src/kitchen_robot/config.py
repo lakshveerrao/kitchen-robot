@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from dataclasses import replace
 import os
 
 try:
@@ -23,6 +24,9 @@ class Settings:
     camera_index: int
     video_window_seconds: float
     video_sample_every_n_frames: int
+
+    def with_overrides(self, **changes: object) -> "Settings":
+        return replace(self, **changes)
 
     @classmethod
     def from_env(cls, mock: bool = False) -> "Settings":

@@ -1,6 +1,6 @@
 # Kitchen Robot - Testing 1
 
-Testing 1 is a laptop-run proof of concept for a voice-first kitchen robot that guides a fixed upma recipe and controls a stirrer through an ESP32-S3.
+Testing 1 is a laptop-run proof of concept for a voice-first kitchen robot that guides a fixed upma recipe and controls a stirrer through an ESP32-C3.
 
 The product requirements and milestone plan live in:
 
@@ -14,7 +14,7 @@ docs/PRD.md
 - Camera: external camera, diagonal top view of a kadai
 - Voice input: external microphone
 - Voice output: Bose speaker through AUX
-- Controller: ESP32-S3 DevKit N16R8
+- Controller: ESP32-C3
 - Motor: NEMA 17 stepper via A4988
 - Recipe: fixed upma
 - Human actions: add ingredients and control heat
@@ -56,8 +56,29 @@ The first run uses mock mode so the orchestration loop can be tested before came
 ```bash
 .venv/bin/python -m pytest -q
 .venv/bin/python -m ruff check .
-PYTHONPATH=src .venv/bin/python -m kitchen_robot --mock
+PYTHONPATH=src .venv/bin/python -m kitchen_robot run --mock
 ```
+
+## Operator Commands
+
+```bash
+# Run the mock orchestrator
+PYTHONPATH=src .venv/bin/python -m kitchen_robot run --mock
+
+# Check camera capture without calling the AI API
+PYTHONPATH=src .venv/bin/python -m kitchen_robot camera-check --camera-index 0 --seconds 2
+
+# Scan for the ESP32 BLE device
+PYTHONPATH=src .venv/bin/python -m kitchen_robot ble-scan
+
+# Safe ESP32 command: asks firmware for status, does not move the motor
+PYTHONPATH=src .venv/bin/python -m kitchen_robot stirrer-command status
+
+# Emergency stop
+PYTHONPATH=src .venv/bin/python -m kitchen_robot stirrer-command emergency_stop
+```
+
+If BLE scan times out on macOS, allow Bluetooth access for the terminal/Codex app in System Settings, then retry.
 
 ## ESP32 Firmware
 
@@ -67,4 +88,11 @@ The initial firmware sketch lives in:
 firmware/esp32_stirrer_ble/esp32_stirrer_ble.ino
 ```
 
-ESP32-S3 supports BLE, so Testing 1 uses a BLE UART-style service rather than classic Bluetooth serial.
+ESP32-C3 supports BLE, so Testing 1 uses a BLE UART-style service rather than classic Bluetooth serial.
+
+Compile and upload to the ESP32-C3:
+
+```bash
+arduino-cli compile --fqbn "esp32:esp32:esp32c3:CDCOnBoot=cdc" firmware/esp32_stirrer_ble
+arduino-cli upload -p /dev/cu.usbmodem21101 --fqbn "esp32:esp32:esp32c3:CDCOnBoot=cdc" firmware/esp32_stirrer_ble
+```
