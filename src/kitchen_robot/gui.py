@@ -540,12 +540,13 @@ INDEX_HTML = """<!doctype html>
       const text = transcript.toLowerCase();
       appendLog("Voice Heard", transcript);
       const woke = text.includes("hey robot") || text.includes("hai robot") || text.includes("robot");
+      const resumeCommand = isResumeCommand(text);
       if (woke) {
         voiceActiveUntil = Date.now() + 15000;
         setAgentText(voiceAgent, "Awake");
       }
 
-      const active = woke || Date.now() < voiceActiveUntil;
+      const active = woke || Date.now() < voiceActiveUntil || (upmaSafetyPaused && resumeCommand);
       if (!active) return;
 
       voiceActiveUntil = Date.now() + 15000;
@@ -553,7 +554,7 @@ INDEX_HTML = """<!doctype html>
         stopUpmaLive(true);
         return;
       }
-      if (text.includes("clear") || text.includes("cleared") || text.includes("continue") || text.includes("resume") || text.includes("safe")) {
+      if (resumeCommand) {
         resumeAfterSafety();
         return;
       }
@@ -572,6 +573,20 @@ INDEX_HTML = """<!doctype html>
       if (text.includes("next")) {
         nextUpmaStep();
       }
+    }
+
+    function isResumeCommand(text) {
+      return (
+        text.includes("clear") ||
+        text.includes("cleared") ||
+        text.includes("clean") ||
+        text.includes("cleaned") ||
+        text.includes("removed") ||
+        text.includes("continue") ||
+        text.includes("resume") ||
+        text.includes("safe") ||
+        text.includes("done")
+      );
     }
 
     async function startBrowserCamera() {
@@ -783,23 +798,16 @@ INDEX_HTML = """<!doctype html>
         return;
       }
 
-      appendLog("Safety Agent", "User says area is clear. Checking once before continuing.");
-      speak("Checking safety. If clear, I will continue.");
-      setAgentText(safetyAgent, "Checking clear");
+      appendLog("Safety Agent", "User says area is clear. Continuing from the same step.");
+      speak("Continuing.");
+      setAgentText(safetyAgent, "Clear by user");
       upmaSafetyPaused = false;
-      const wasBusy = upmaBusy;
       upmaBusy = false;
-      await analyzeUpmaStep(true);
-      upmaBusy = wasBusy && upmaBusy;
-      if (!upmaSafetyPaused) {
-        setAgentText(safetyAgent, "Clear");
-        speak("Continuing.");
-        if (!upmaWaitingForAction && currentUpmaStep().stir_mode) {
-          await applyStirMode(currentUpmaStep().stir_mode);
-        }
-        clearTimeout(upmaTimer);
-        upmaTimer = setTimeout(() => analyzeUpmaStep(false), 2000);
+      if (!upmaWaitingForAction && currentUpmaStep().stir_mode) {
+        await applyStirMode(currentUpmaStep().stir_mode);
       }
+      clearTimeout(upmaTimer);
+      upmaTimer = setTimeout(() => analyzeUpmaStep(false), 2500);
     }
 
     function userSaysAdded() {
