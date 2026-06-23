@@ -694,12 +694,13 @@ INDEX_HTML = """<!doctype html>
         const data = await callApi("/api/browser-vision-check", {
           frame_jpeg: frameJpeg,
           step
-        }, { keepControlsEnabled: true });
+        }, { keepControlsEnabled: true, quietFailure: true, background: !manual });
 
         if (!data || !data.ok) {
-          visionState.textContent = "Vision timeout";
-          setAgentText(visionAgent, "Timed out; controls are still available");
-          setAgentText(mainAgent, "Waiting for user");
+          visionState.textContent = "Cloud slow";
+          setAgentText(visionAgent, "Cloud slow; continuing");
+          setAgentText(mainAgent, upmaWaitingForAction ? "Waiting for added" : "Watching");
+          appendLog("Vision Agent", data?.output || "Cloud vision did not answer yet. Continuing without freezing.");
           clearTimeout(upmaTimer);
           upmaTimer = setTimeout(() => analyzeUpmaStep(false), upmaWaitingForAction ? 6000 : UPMA_SAMPLE_MS * 2);
           return;
@@ -767,11 +768,20 @@ INDEX_HTML = """<!doctype html>
 
       upmaWaitingForAction = false;
       visionState.textContent = "User confirmed add";
-      setAgentText(mainAgent, "Accepted; stirring now");
+      const step = currentUpmaStep();
+      const actionOnlyStep = !step.stir_mode;
+      setAgentText(mainAgent, actionOnlyStep ? "Accepted; next step" : "Accepted; stirring now");
       setAgentText(visionAgent, "Cloud verify in background");
-      appendLog("Voice Agent", "User said the ingredient was added. Starting stir now and verifying with cloud vision in the background.");
+      if (actionOnlyStep) {
+        appendLog("Voice Agent", "User said the ingredient was added. Moving to the next step.");
+        speak("Okay. Moving to the next step.");
+        enterUpmaStep(upmaStepIndex + 1);
+        return;
+      }
+
+      appendLog("Voice Agent", "User said the ingredient was added. Starting stir now. Cloud vision will verify in the background.");
       speak("Okay. Stirring now.");
-      applyStirMode(currentUpmaStep().stir_mode).then(() => {
+      applyStirMode(step.stir_mode).then(() => {
         clearTimeout(upmaTimer);
         upmaTimer = setTimeout(() => analyzeUpmaStep(false), 2000);
       });
@@ -822,7 +832,7 @@ INDEX_HTML = """<!doctype html>
     }
 
     async function callApi(path, payload = {}, options = {}) {
-      setState("Running", "busy");
+      if (!options.background) setState("Running", "busy");
       setButtonsDisabled(true, Boolean(options.keepControlsEnabled));
       const controller = new AbortController();
       const timeoutMs = timeoutForAction(path, payload);
@@ -835,15 +845,17 @@ INDEX_HTML = """<!doctype html>
           signal: controller.signal
         });
         const data = await response.json();
-        appendLog(data.ok ? "OK" : "Problem", data.output || data.error || "");
-        setState(data.ok ? "Ready" : "Needs Attention", data.ok ? "ok" : "error");
+        if (data.ok || !options.quietFailure) {
+          appendLog(data.ok ? "OK" : "Problem", data.output || data.error || "");
+        }
+        if (!options.background) setState(data.ok ? "Ready" : "Needs Attention", data.ok ? "ok" : "error");
         return data;
       } catch (error) {
         const message = error.name === "AbortError"
           ? "This step took too long and was stopped. Check camera permission/port, then try again."
           : String(error);
-        appendLog("Error", message);
-        setState("Error", "error");
+        if (!options.quietFailure) appendLog("Error", message);
+        if (!options.background) setState("Error", "error");
         return { ok: false, output: message };
       } finally {
         clearTimeout(timer);
