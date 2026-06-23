@@ -392,6 +392,8 @@ INDEX_HTML = """<!doctype html>
     let upmaBusy = false;
     let upmaWaitingForAction = false;
     let upmaSafetyPaused = false;
+    let activeStirMode = null;
+    let lastWatchLogKey = "";
     let voiceRecognition = null;
     let voiceActiveUntil = 0;
     let voiceListening = false;
@@ -668,6 +670,7 @@ INDEX_HTML = """<!doctype html>
     async function enterUpmaStep(index) {
       if (!upmaRunning) return;
       upmaStepIndex = Math.min(index, UPMA_RECIPE.length - 1);
+      lastWatchLogKey = "";
       const step = currentUpmaStep();
       currentStep.textContent = `${step.label}: ${step.vision_goal}`;
       upmaWaitingForAction = Boolean(step.human_action);
@@ -691,11 +694,20 @@ INDEX_HTML = """<!doctype html>
     }
 
     async function applyStirMode(stirMode) {
+      const desiredMode = stirMode || null;
+      if (activeStirMode === desiredMode) {
+        setAgentText(stirAgent, desiredMode ? `Already ${desiredMode}` : "Already stopped");
+        return;
+      }
+
       if (stirMode) {
         setAgentText(stirAgent, `Starting ${stirMode}`);
-        await callApi("/api/wired-start-profile", { profile: stirMode }, { keepControlsEnabled: true });
+        activeStirMode = stirMode;
+        const data = await callApi("/api/wired-start-profile", { profile: stirMode }, { keepControlsEnabled: true });
+        if (!data.ok) activeStirMode = null;
       } else {
         setAgentText(stirAgent, "Stopping");
+        activeStirMode = null;
         await callApi("/api/wired-stop", {}, { keepControlsEnabled: true });
       }
     }
@@ -762,7 +774,11 @@ INDEX_HTML = """<!doctype html>
           return;
         }
 
-        appendLog("Vision Agent", `Still watching ${step.label}.\\n${summary}`);
+        const watchKey = `${step.step_id}:${summary}`;
+        if (manual || watchKey !== lastWatchLogKey) {
+          appendLog("Vision Agent", `Still watching ${step.label}.\\n${summary}`);
+          lastWatchLogKey = watchKey;
+        }
         clearTimeout(upmaTimer);
         upmaTimer = setTimeout(() => analyzeUpmaStep(false), upmaWaitingForAction ? 6000 : UPMA_SAMPLE_MS);
       } finally {
@@ -784,6 +800,7 @@ INDEX_HTML = """<!doctype html>
       setAgentText(safetyAgent, reason || "Unsafe object detected");
       setAgentText(stirAgent, "Emergency stop");
       await callApi("/api/wired-emergency", {}, { keepControlsEnabled: true });
+      activeStirMode = null;
       appendLog("Upma Live", "Paused for safety. Clear the area, then say cleared or continue.");
     }
 
@@ -854,6 +871,7 @@ INDEX_HTML = """<!doctype html>
       upmaRunning = false;
       upmaWaitingForAction = false;
       upmaSafetyPaused = false;
+      activeStirMode = null;
       clearTimeout(upmaTimer);
       upmaTimer = null;
       currentStep.textContent = "Stopped";
