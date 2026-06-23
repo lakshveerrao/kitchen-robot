@@ -17,3 +17,19 @@ def test_payload_from_cli_start_delay_uses_value() -> None:
         "type": "start_delay",
         "delay_micros": 2500,
     }
+
+
+def test_payload_from_cli_servo_position() -> None:
+    assert payload_from_cli_command("servo", "reach front") == {
+        "type": "servo",
+        "target": "reach",
+        "position": "front",
+    }
+
+
+def test_payload_from_cli_servo_home() -> None:
+    assert payload_from_cli_command("servo", "home") == {
+        "type": "servo",
+        "target": "home",
+        "position": "home",
+    }

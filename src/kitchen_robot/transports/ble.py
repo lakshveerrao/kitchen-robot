@@ -43,6 +43,13 @@ def serialize_stir_command(payload: dict) -> str:
     if command_type == "status":
         return "status"
 
+    if command_type == "servo":
+        target = str(payload["target"])
+        position = str(payload["position"])
+        if target == "home":
+            return "servo home"
+        return f"servo {target} {position}"
+
     raise ValueError(f"Unsupported stir command: {payload}")
 
 
@@ -96,5 +103,15 @@ def payload_from_cli_command(command: str, value: str | None = None) -> dict[str
         if value is None:
             raise ValueError("start_delay requires a delay value in microseconds")
         return {"type": "start_delay", "delay_micros": int(value)}
+
+    if command == "servo":
+        if value is None:
+            raise ValueError("servo requires a value like 'lift up' or 'reach front'")
+        parts = value.split(maxsplit=1)
+        if len(parts) == 1 and parts[0] == "home":
+            return {"type": "servo", "target": "home", "position": "home"}
+        if len(parts) != 2:
+            raise ValueError("servo requires a value like 'lift up' or 'reach front'")
+        return {"type": "servo", "target": parts[0], "position": parts[1]}
 
     raise ValueError(f"Unsupported CLI command: {command}")

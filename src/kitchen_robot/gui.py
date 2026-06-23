@@ -306,6 +306,15 @@ INDEX_HTML = """<!doctype html>
         <button data-action="wired-start-delay">Start Delay</button>
         <button data-action="wired-emergency" class="danger">Emergency Stop</button>
       </div>
+      <h3>Arm Servos</h3>
+      <div class="grid">
+        <button data-action="wired-servo" data-servo-target="lift" data-servo-position="up">Lift Up</button>
+        <button data-action="wired-servo" data-servo-target="lift" data-servo-position="down">Lift Down</button>
+        <button data-action="wired-servo" data-servo-target="reach" data-servo-position="front">Reach Front</button>
+        <button data-action="wired-servo" data-servo-target="reach" data-servo-position="back">Reach Back</button>
+        <button data-action="wired-servo" data-servo-target="reach" data-servo-position="center">Reach Center</button>
+        <button data-action="wired-servo" data-servo-target="home" data-servo-position="home">Servo Home</button>
+      </div>
     </section>
 
     <section class="wide">
@@ -987,7 +996,14 @@ INDEX_HTML = """<!doctype html>
       const profile = document.getElementById("profile").value;
       const delay = document.getElementById("delay").value;
 
-      const payload = { camera_index: cameraIndex, seconds, profile, delay };
+      const payload = {
+        camera_index: cameraIndex,
+        seconds,
+        profile,
+        delay,
+        servo_target: event.target.dataset.servoTarget || "",
+        servo_position: event.target.dataset.servoPosition || ""
+      };
       callApi(`/api/${action}`, payload);
     });
   </script>
@@ -1050,6 +1066,7 @@ class KitchenRobotRequestHandler(BaseHTTPRequestHandler):
             "/api/wired-reverse": lambda data: self._wired_stirrer(data, "reverse"),
             "/api/wired-start-profile": self._wired_stirrer_profile,
             "/api/wired-start-delay": self._wired_stirrer_delay,
+            "/api/wired-servo": self._wired_servo,
         }
 
         handler = routes.get(parsed.path)
@@ -1262,6 +1279,13 @@ class KitchenRobotRequestHandler(BaseHTTPRequestHandler):
     def _wired_stirrer_delay(self, payload: dict[str, Any]) -> dict[str, Any]:
         delay = str(payload.get("delay") or "2500")
         return self._wired_stirrer(payload, "start_delay", delay)
+
+    def _wired_servo(self, payload: dict[str, Any]) -> dict[str, Any]:
+        target = str(payload.get("servo_target") or "")
+        position = str(payload.get("servo_position") or "")
+        if target == "home":
+            return self._wired_stirrer(payload, "servo", "home")
+        return self._wired_stirrer(payload, "servo", f"{target} {position}")
 
     def _stirrer(
         self,

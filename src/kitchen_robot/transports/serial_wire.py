@@ -39,6 +39,13 @@ def serialize_serial_stir_command(payload: dict) -> str:
     if command_type in {"status", "stop", "emergency_stop", "reverse"}:
         return str(command_type)
 
+    if command_type == "servo":
+        target = str(payload["target"])
+        position = str(payload["position"])
+        if target == "home":
+            return "servo home"
+        return f"servo {target} {position}"
+
     raise ValueError(f"Unsupported wired stir command: {payload}")
 
 

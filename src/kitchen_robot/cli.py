@@ -36,11 +36,11 @@ def build_parser() -> argparse.ArgumentParser:
     stirrer_parser = subparsers.add_parser("stirrer-command", help="Send one command to the ESP32 stirrer")
     stirrer_parser.add_argument(
         "stirrer_command",
-        choices=["status", "stop", "emergency_stop", "reverse", "start_profile", "start_delay"],
+        choices=["status", "stop", "emergency_stop", "reverse", "start_profile", "start_delay", "servo"],
         nargs="?",
         default="status",
     )
-    stirrer_parser.add_argument("--value", default=None, help="Profile name or delay value")
+    stirrer_parser.add_argument("--value", default=None, help="Profile, delay, or servo value like 'lift up'")
 
     serial_scan_parser = subparsers.add_parser("serial-scan", help="Find wired ESP32 serial ports")
     serial_scan_parser.set_defaults(_serial_scan=True)
@@ -48,11 +48,11 @@ def build_parser() -> argparse.ArgumentParser:
     wired_parser = subparsers.add_parser("wired-command", help="Send one command over USB serial")
     wired_parser.add_argument(
         "wired_command",
-        choices=["status", "stop", "emergency_stop", "reverse", "start_profile", "start_delay"],
+        choices=["status", "stop", "emergency_stop", "reverse", "start_profile", "start_delay", "servo"],
         nargs="?",
         default="status",
     )
-    wired_parser.add_argument("--value", default=None, help="Profile name or delay value")
+    wired_parser.add_argument("--value", default=None, help="Profile, delay, or servo value like 'reach front'")
     wired_parser.add_argument("--port", default=None, help="Serial port override")
     return parser
 
