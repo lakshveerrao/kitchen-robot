@@ -9,6 +9,7 @@
 // Board: ESP32-C3
 // Motor: NEMA 17 through A4988
 // Servo: 1x SG90 lift servo. Servo movement stops the stepper first.
+// The same lift signal is mirrored on GPIO7 and GPIO10 to make testing easier.
 
 static const char *DEVICE_NAME = "KitchenStirrer";
 static const char *SERVICE_UUID = "8a4f1000-0b38-4f4d-8b5f-6e5d7f0c1000";
@@ -19,6 +20,7 @@ static const int STEP_PIN = 4;
 static const int DIR_PIN = 5;
 static const int ENABLE_PIN = 6;
 static const int LIFT_SERVO_PIN = 7;
+static const int LIFT_SERVO_BACKUP_PIN = 10;
 
 static const uint32_t SERVO_FREQ_HZ = 50;
 static const uint8_t SERVO_PWM_BITS = 14;
@@ -75,15 +77,21 @@ uint32_t servoDutyFromMicros(uint16_t pulseMicros) {
   return static_cast<uint32_t>((static_cast<uint64_t>(pulseMicros) * SERVO_PWM_MAX) / 20000ULL);
 }
 
-void writeServoAngle(int pin, int angle) {
+void writeServoPinAngle(int pin, int angle) {
   int safeAngle = constrain(angle, 0, 180);
   uint16_t pulseMicros = map(safeAngle, 0, 180, SERVO_MIN_US, SERVO_MAX_US);
   ledcWrite(pin, servoDutyFromMicros(pulseMicros));
 }
 
+void writeLiftServoAngle(int angle) {
+  writeServoPinAngle(LIFT_SERVO_PIN, angle);
+  writeServoPinAngle(LIFT_SERVO_BACKUP_PIN, angle);
+}
+
 void setupServos() {
   ledcAttach(LIFT_SERVO_PIN, SERVO_FREQ_HZ, SERVO_PWM_BITS);
-  writeServoAngle(LIFT_SERVO_PIN, liftServoAngle);
+  ledcAttach(LIFT_SERVO_BACKUP_PIN, SERVO_FREQ_HZ, SERVO_PWM_BITS);
+  writeLiftServoAngle(liftServoAngle);
 }
 
 bool moveServoOnly(const String &servoName, int angle, bool report = true) {
@@ -91,7 +99,7 @@ bool moveServoOnly(const String &servoName, int angle, bool report = true) {
 
   if (servoName == "lift") {
     liftServoAngle = constrain(angle, 0, 180);
-    writeServoAngle(LIFT_SERVO_PIN, liftServoAngle);
+    writeLiftServoAngle(liftServoAngle);
     delay(SERVO_SETTLE_MS);
     if (report) {
       sendStatus("OK SERVO lift " + String(liftServoAngle));
@@ -109,6 +117,22 @@ void handleServoCommand(String command) {
   if (command == "servo home") {
     moveServoOnly("lift", LIFT_UP_ANGLE, false);
     sendStatus("OK SERVO home");
+    return;
+  }
+
+  if (command == "servo sweep") {
+    stopMotor(false);
+    for (int angle = LIFT_DOWN_ANGLE; angle <= LIFT_UP_ANGLE; angle += 5) {
+      writeLiftServoAngle(angle);
+      delay(60);
+    }
+    for (int angle = LIFT_UP_ANGLE; angle >= LIFT_DOWN_ANGLE; angle -= 5) {
+      writeLiftServoAngle(angle);
+      delay(60);
+    }
+    liftServoAngle = LIFT_UP_ANGLE;
+    writeLiftServoAngle(liftServoAngle);
+    sendStatus("OK SERVO sweep");
     return;
   }
 

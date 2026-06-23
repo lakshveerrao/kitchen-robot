@@ -85,6 +85,7 @@ PYTHONPATH=src .venv/bin/python -m kitchen_robot wired-command emergency_stop
 PYTHONPATH=src .venv/bin/python -m kitchen_robot wired-command servo --value "lift up"
 PYTHONPATH=src .venv/bin/python -m kitchen_robot wired-command servo --value "lift down"
 PYTHONPATH=src .venv/bin/python -m kitchen_robot wired-command servo --value "home"
+PYTHONPATH=src .venv/bin/python -m kitchen_robot wired-command servo --value "sweep"
 ```
 
 Wired USB serial is the primary Testing 1 motor-control path. Bluetooth is not required.
@@ -133,17 +134,19 @@ start 2500
 servo lift up
 servo lift down
 servo home
+servo sweep
 ```
 
 Default SG90 wiring in the firmware:
 
 ```text
 Lift servo signal: GPIO7
+Backup lift signal: GPIO10
 Servo power: external 5V supply
 Servo ground: shared with ESP32-C3 ground
 ```
 
-Do not power the SG90 servo from the ESP32-C3 3.3V pin. Use a separate 5V servo supply and connect grounds together.
+The firmware mirrors the same lift servo signal on `GPIO7` and `GPIO10` for Testing 1 debugging. Use one signal wire only. Do not power the SG90 servo from the ESP32-C3 3.3V pin. Use a separate 5V servo supply and connect grounds together.
 
 ## API Key
 

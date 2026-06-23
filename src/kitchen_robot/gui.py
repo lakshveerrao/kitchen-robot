@@ -311,6 +311,7 @@ INDEX_HTML = """<!doctype html>
         <button data-action="wired-servo" data-servo-target="lift" data-servo-position="up">Lift Up</button>
         <button data-action="wired-servo" data-servo-target="lift" data-servo-position="down">Lift Down</button>
         <button data-action="wired-servo" data-servo-target="home" data-servo-position="home">Servo Home</button>
+        <button data-action="wired-servo" data-servo-target="sweep" data-servo-position="sweep">Lift Sweep</button>
       </div>
     </section>
 
@@ -1282,6 +1283,8 @@ class KitchenRobotRequestHandler(BaseHTTPRequestHandler):
         position = str(payload.get("servo_position") or "")
         if target == "home":
             return self._wired_stirrer(payload, "servo", "home")
+        if target == "sweep":
+            return self._wired_stirrer(payload, "servo", "sweep")
         return self._wired_stirrer(payload, "servo", f"{target} {position}")
 
     def _stirrer(

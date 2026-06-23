@@ -11,6 +11,7 @@ from kitchen_robot.transports.serial_wire import serialize_serial_stir_command
         ({"type": "status"}, "status"),
         ({"type": "servo", "target": "lift", "position": "down"}, "servo lift down"),
         ({"type": "servo", "target": "home", "position": "home"}, "servo home"),
+        ({"type": "servo", "target": "sweep", "position": "sweep"}, "servo sweep"),
     ],
 )
 def test_serialize_serial_stir_command(payload: dict, expected: str) -> None:

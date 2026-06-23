@@ -33,3 +33,11 @@ def test_payload_from_cli_servo_home() -> None:
         "target": "home",
         "position": "home",
     }
+
+
+def test_payload_from_cli_servo_sweep() -> None:
+    assert payload_from_cli_command("servo", "sweep") == {
+        "type": "servo",
+        "target": "sweep",
+        "position": "sweep",
+    }
