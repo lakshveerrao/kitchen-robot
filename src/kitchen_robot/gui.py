@@ -391,7 +391,6 @@ INDEX_HTML = """<!doctype html>
     let upmaTimer = null;
     let upmaBusy = false;
     let upmaWaitingForAction = false;
-    let upmaFastAddCheck = false;
     let voiceRecognition = null;
     let voiceActiveUntil = 0;
     let voiceListening = false;
@@ -694,16 +693,12 @@ INDEX_HTML = """<!doctype html>
         setAgentText(visionAgent, "Sending one frame");
         const data = await callApi("/api/browser-vision-check", {
           frame_jpeg: frameJpeg,
-          step,
-          fast_check: upmaFastAddCheck
+          step
         }, { keepControlsEnabled: true });
 
         if (!data || !data.ok) {
           visionState.textContent = "Vision timeout";
-          setAgentText(
-            visionAgent,
-            upmaFastAddCheck ? "Fast check timed out; say added again or press Analyze Now" : "Timed out; use Analyze Now or Next Step"
-          );
+          setAgentText(visionAgent, "Timed out; controls are still available");
           setAgentText(mainAgent, "Waiting for user");
           clearTimeout(upmaTimer);
           upmaTimer = setTimeout(() => analyzeUpmaStep(false), upmaWaitingForAction ? 6000 : UPMA_SAMPLE_MS * 2);
@@ -764,11 +759,21 @@ INDEX_HTML = """<!doctype html>
         appendLog("Voice Agent", "I heard added, but Upma Live is not running.");
         return;
       }
-      appendLog("Voice Agent", "User said the ingredient was added. Fast checking now.");
-      speak("Checking now.");
-      upmaFastAddCheck = true;
-      analyzeUpmaStep(true).finally(() => {
-        upmaFastAddCheck = false;
+      if (!upmaWaitingForAction) {
+        appendLog("Voice Agent", "I heard added. I am already in the cooking/watch phase.");
+        analyzeUpmaStep(true);
+        return;
+      }
+
+      upmaWaitingForAction = false;
+      visionState.textContent = "User confirmed add";
+      setAgentText(mainAgent, "Accepted; stirring now");
+      setAgentText(visionAgent, "Cloud verify in background");
+      appendLog("Voice Agent", "User said the ingredient was added. Starting stir now and verifying with cloud vision in the background.");
+      speak("Okay. Stirring now.");
+      applyStirMode(currentUpmaStep().stir_mode).then(() => {
+        clearTimeout(upmaTimer);
+        upmaTimer = setTimeout(() => analyzeUpmaStep(false), 2000);
       });
     }
 
@@ -795,7 +800,7 @@ INDEX_HTML = """<!doctype html>
 
     function timeoutForAction(path, payload) {
       if (path.includes("browser-camera-check")) return 12000;
-      if (path.includes("browser-vision-check")) return payload.fast_check ? 2000 : 18000;
+      if (path.includes("browser-vision-check")) return 18000;
       if (path.includes("camera-check")) return Math.max(12000, (Number(payload.seconds) + 8) * 1000);
       if (path.includes("upma-mode")) return 25000;
       return 12000;
@@ -1086,36 +1091,19 @@ class KitchenRobotRequestHandler(BaseHTTPRequestHandler):
         if not settings.openai_api_key:
             return {"ok": False, "output": "OPENAI_API_KEY is missing from .env", "code": 1}
 
-        fast_check = bool(payload.get("fast_check", False))
-        if fast_check:
-            result = _run_browser_vision_worker(
-                settings=settings,
-                step=step,
-                frame=frame,
-                timeout=2.0,
-            )
-            if not result["ok"]:
-                return {
-                    "ok": False,
-                    "output": "Fast add check timed out. Say added again or press Analyze Now.",
-                    "code": 124,
-                }
-            observation = result["observation"]
-        else:
-            async def run() -> dict[str, Any]:
-                from kitchen_robot.services.openai_gateway import OpenAiGateway
-
-                gateway = OpenAiGateway(settings)
-                observation = await gateway.inspect_video_window(
-                    recipe_step=step,
-                    jpeg_frames=[frame],
-                )
-                return observation
-
-            try:
-                observation = asyncio.run(run())
-            except Exception as exc:
-                return {"ok": False, "output": f"Vision Agent failed: {exc}", "code": 1}
+        result = _run_browser_vision_worker(
+            settings=settings,
+            step=step,
+            frame=frame,
+            timeout=16.0,
+        )
+        if not result["ok"]:
+            return {
+                "ok": False,
+                "output": result.get("error") or "Vision Agent timed out.",
+                "code": 124,
+            }
+        observation = result["observation"]
 
         goal_met = bool(observation.get("goal_met", False))
         confidence = float(observation.get("confidence", 0.0))
