@@ -441,14 +441,35 @@ class KitchenRobotRequestHandler(BaseHTTPRequestHandler):
         return _capture_async(run())
 
     def _v1_wired_run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        camera_index = str(int(payload.get("camera_index", 0)))
+        seconds = str(min(float(payload.get("seconds", 2)), 2.0))
+        camera_result = _run_cli(
+            ["camera-check", "--camera-index", camera_index, "--seconds", seconds],
+            timeout=max(8, float(seconds) + 6),
+            timeout_message=(
+                "Upma mode did not start because camera preflight timed out.\n"
+                "Most likely reason: macOS camera permission, wrong camera index, or another app is using the camera."
+            ),
+        )
+        if not camera_result["ok"]:
+            return {
+                "ok": False,
+                "output": (
+                    "Upma mode did not start, so the motor was not started.\n\n"
+                    f"{camera_result['output']}"
+                ),
+                "code": camera_result.get("code", 1),
+            }
+
         return _run_cli(
             ["run", "--recipe", "upma"],
             timeout=22,
             timeout_message=(
                 "Upma mode took too long and was stopped.\n"
                 "Most likely reason: camera capture, OpenAI vision, or ESP32 serial did not answer.\n"
-                "First run Check Camera and Status, then try Upma Making Mode again."
+                "I sent emergency stop to the stirrer before returning this message."
             ),
+            emergency_stop_on_timeout=True,
         )
 
     def _camera_check(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -566,7 +587,12 @@ def _capture_async(coro: Any) -> dict[str, Any]:
     return {"ok": code == 0, "output": buffer.getvalue(), "code": code}
 
 
-def _run_cli(args: list[str], timeout: float, timeout_message: str) -> dict[str, Any]:
+def _run_cli(
+    args: list[str],
+    timeout: float,
+    timeout_message: str,
+    emergency_stop_on_timeout: bool = False,
+) -> dict[str, Any]:
     project_root = Path(__file__).resolve().parents[2]
     env = os.environ.copy()
     src_path = str(project_root / "src")
@@ -584,6 +610,8 @@ def _run_cli(args: list[str], timeout: float, timeout_message: str) -> dict[str,
         )
     except subprocess.TimeoutExpired as exc:
         output_parts = [timeout_message]
+        if emergency_stop_on_timeout:
+            output_parts.append(_emergency_stop_after_timeout())
         if exc.stdout:
             output_parts.append(str(exc.stdout))
         if exc.stderr:
@@ -592,6 +620,18 @@ def _run_cli(args: list[str], timeout: float, timeout_message: str) -> dict[str,
 
     output = "\n".join(part for part in (result.stdout, result.stderr) if part)
     return {"ok": result.returncode == 0, "output": output, "code": result.returncode}
+
+
+def _emergency_stop_after_timeout() -> str:
+    result = _run_cli(
+        ["wired-command", "emergency_stop"],
+        timeout=12,
+        timeout_message="Emergency stop timed out after the Upma session timeout.",
+    )
+    return (
+        "Emergency stop after timeout:\n"
+        f"{result.get('output') or 'No emergency stop output'}"
+    )
 
 
 def add_gui_parser(subparsers: argparse._SubParsersAction) -> None:

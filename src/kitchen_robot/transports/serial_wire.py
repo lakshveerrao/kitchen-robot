@@ -78,7 +78,23 @@ class Esp32SerialClient:
         self.port = port
         self.baudrate = baudrate
 
-    def send_command(self, command: str, timeout: float = 3.0) -> SerialCommandResult:
+    def send_command(
+        self,
+        command: str,
+        timeout: float = 3.0,
+        attempts: int = 2,
+    ) -> SerialCommandResult:
+        last_result = SerialCommandResult(ok=False, port=None, message="Command was not sent")
+        for attempt in range(max(1, attempts)):
+            result = self._send_command_once(command, timeout)
+            if result.ok or "No response from ESP32" not in result.message:
+                return result
+            last_result = result
+            if attempt < attempts - 1:
+                time.sleep(0.4)
+        return last_result
+
+    def _send_command_once(self, command: str, timeout: float) -> SerialCommandResult:
         port = self.port or detect_esp32_port()
         if port is None:
             return SerialCommandResult(ok=False, port=None, message="No ESP32 serial port found")

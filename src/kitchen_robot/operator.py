@@ -87,12 +87,18 @@ async def serial_scan() -> int:
 async def wired_stirrer_command(command: str, value: str | None, port: str | None = None) -> int:
     payload = payload_from_cli_command(command, value)
     serialized = serialize_serial_stir_command(payload)
-    client = Esp32SerialClient(port=port)
     print(f"sending over USB serial: {serialized}")
-    result = client.send_command(serialized)
-    print(f"port: {result.port or 'none'}")
-    print(result.message)
-    return 0 if result.ok else 1
+
+    timeout = 10 if command in {"stop", "emergency_stop"} else 7
+    result = _run_wired_worker(serialized, port, timeout)
+    if not result["ok"]:
+        print(f"port: {result.get('port') or 'unknown'}")
+        print(result.get("error") or "Wired command timed out")
+        return 1
+
+    print(f"port: {result.get('port') or 'none'}")
+    print(result["message"])
+    return 0 if result["command_ok"] else 1
 
 
 def _run_ble_worker(worker: Any, args: tuple[Any, ...], timeout: float) -> dict[str, Any]:
@@ -111,6 +117,44 @@ def _run_ble_worker(worker: Any, args: tuple[Any, ...], timeout: float) -> dict[
         return queue.get_nowait()
     except Empty:
         return {"ok": False, "error": "BLE worker exited without a result"}
+
+
+def _run_wired_worker(command: str, port: str | None, timeout: float) -> dict[str, Any]:
+    context = get_context("spawn")
+    queue: Queue = context.Queue()
+    process = context.Process(target=_wired_command_worker, args=(command, port, queue))
+    process.start()
+    process.join(timeout)
+
+    if process.is_alive():
+        process.terminate()
+        process.join(0.5)
+        return {
+            "ok": False,
+            "port": port,
+            "error": f"Wired command timed out after {timeout:.1f}s",
+        }
+
+    try:
+        return queue.get_nowait()
+    except Empty:
+        return {"ok": False, "port": port, "error": "Wired worker exited without a result"}
+
+
+def _wired_command_worker(command: str, port: str | None, queue: Queue) -> None:
+    try:
+        client = Esp32SerialClient(port=port)
+        result = client.send_command(command)
+        queue.put(
+            {
+                "ok": True,
+                "command_ok": result.ok,
+                "port": result.port,
+                "message": result.message,
+            }
+        )
+    except Exception as exc:
+        queue.put({"ok": False, "port": port, "error": str(exc)})
 
 
 def _ble_scan_worker(settings: Settings, timeout: float, queue: Queue) -> None:
