@@ -16,10 +16,10 @@ docs/PRD.md
 - Voice output: Bose speaker through AUX
 - Controller: ESP32-C3
 - Motor: NEMA 17 stepper via A4988
-- Arm servos: 2x SG90 micro servos
+- Arm servo: 1x SG90 micro servo
 - Recipe: fixed upma
 - Human actions: add ingredients and control heat
-- Robot actions: stirring, lift up/down, reach front/back
+- Robot actions: stirring and lift up/down
 
 ## Architecture
 
@@ -81,11 +81,9 @@ PYTHONPATH=src .venv/bin/python -m kitchen_robot wired-command status
 # Emergency stop
 PYTHONPATH=src .venv/bin/python -m kitchen_robot wired-command emergency_stop
 
-# Move one SG90 servo at a time
+# Move the SG90 lift servo
 PYTHONPATH=src .venv/bin/python -m kitchen_robot wired-command servo --value "lift up"
 PYTHONPATH=src .venv/bin/python -m kitchen_robot wired-command servo --value "lift down"
-PYTHONPATH=src .venv/bin/python -m kitchen_robot wired-command servo --value "reach front"
-PYTHONPATH=src .venv/bin/python -m kitchen_robot wired-command servo --value "reach back"
 PYTHONPATH=src .venv/bin/python -m kitchen_robot wired-command servo --value "home"
 ```
 
@@ -134,9 +132,6 @@ reverse
 start 2500
 servo lift up
 servo lift down
-servo reach front
-servo reach back
-servo reach center
 servo home
 ```
 
@@ -144,12 +139,11 @@ Default SG90 wiring in the firmware:
 
 ```text
 Lift servo signal: GPIO7
-Reach servo signal: GPIO10
 Servo power: external 5V supply
 Servo ground: shared with ESP32-C3 ground
 ```
 
-Do not power SG90 servos from the ESP32-C3 3.3V pin. Use a separate 5V servo supply and connect grounds together.
+Do not power the SG90 servo from the ESP32-C3 3.3V pin. Use a separate 5V servo supply and connect grounds together.
 
 ## API Key
 

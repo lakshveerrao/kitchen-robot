@@ -44,6 +44,8 @@ def serialize_serial_stir_command(payload: dict) -> str:
         position = str(payload["position"])
         if target == "home":
             return "servo home"
+        if target != "lift":
+            raise ValueError(f"Unsupported servo target: {target}")
         return f"servo {target} {position}"
 
     raise ValueError(f"Unsupported wired stir command: {payload}")

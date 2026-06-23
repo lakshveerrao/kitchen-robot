@@ -48,6 +48,8 @@ def serialize_stir_command(payload: dict) -> str:
         position = str(payload["position"])
         if target == "home":
             return "servo home"
+        if target != "lift":
+            raise ValueError(f"Unsupported servo target: {target}")
         return f"servo {target} {position}"
 
     raise ValueError(f"Unsupported stir command: {payload}")
@@ -106,12 +108,14 @@ def payload_from_cli_command(command: str, value: str | None = None) -> dict[str
 
     if command == "servo":
         if value is None:
-            raise ValueError("servo requires a value like 'lift up' or 'reach front'")
+            raise ValueError("servo requires a value like 'lift up' or 'lift down'")
         parts = value.split(maxsplit=1)
         if len(parts) == 1 and parts[0] == "home":
             return {"type": "servo", "target": "home", "position": "home"}
         if len(parts) != 2:
-            raise ValueError("servo requires a value like 'lift up' or 'reach front'")
+            raise ValueError("servo requires a value like 'lift up' or 'lift down'")
+        if parts[0] != "lift":
+            raise ValueError("Testing 1 supports only the lift servo")
         return {"type": "servo", "target": parts[0], "position": parts[1]}
 
     raise ValueError(f"Unsupported CLI command: {command}")

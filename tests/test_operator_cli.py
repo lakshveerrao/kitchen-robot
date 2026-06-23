@@ -20,10 +20,10 @@ def test_payload_from_cli_start_delay_uses_value() -> None:
 
 
 def test_payload_from_cli_servo_position() -> None:
-    assert payload_from_cli_command("servo", "reach front") == {
+    assert payload_from_cli_command("servo", "lift down") == {
         "type": "servo",
-        "target": "reach",
-        "position": "front",
+        "target": "lift",
+        "position": "down",
     }
 
 

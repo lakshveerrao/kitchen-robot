@@ -10,7 +10,6 @@ from kitchen_robot.transports.serial_wire import serialize_serial_stir_command
         ({"type": "start_delay", "delay_micros": 2500}, "start 2500"),
         ({"type": "status"}, "status"),
         ({"type": "servo", "target": "lift", "position": "down"}, "servo lift down"),
-        ({"type": "servo", "target": "reach", "position": "back"}, "servo reach back"),
         ({"type": "servo", "target": "home", "position": "home"}, "servo home"),
     ],
 )
@@ -21,3 +20,8 @@ def test_serialize_serial_stir_command(payload: dict, expected: str) -> None:
 def test_serialize_serial_stir_command_rejects_unknown_command() -> None:
     with pytest.raises(ValueError):
         serialize_serial_stir_command({"type": "dance"})
+
+
+def test_serialize_serial_stir_command_rejects_removed_reach_servo() -> None:
+    with pytest.raises(ValueError):
+        serialize_serial_stir_command({"type": "servo", "target": "reach", "position": "back"})

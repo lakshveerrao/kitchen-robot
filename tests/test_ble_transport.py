@@ -13,7 +13,6 @@ from kitchen_robot.transports.ble import serialize_stir_command
         ({"type": "reverse"}, "reverse"),
         ({"type": "status"}, "status"),
         ({"type": "servo", "target": "lift", "position": "up"}, "servo lift up"),
-        ({"type": "servo", "target": "reach", "position": "front"}, "servo reach front"),
         ({"type": "servo", "target": "home", "position": "home"}, "servo home"),
     ],
 )
@@ -24,3 +23,8 @@ def test_serialize_stir_command(payload: dict, expected: str) -> None:
 def test_serialize_stir_command_rejects_unknown_command() -> None:
     with pytest.raises(ValueError):
         serialize_stir_command({"type": "dance"})
+
+
+def test_serialize_stir_command_rejects_removed_reach_servo() -> None:
+    with pytest.raises(ValueError):
+        serialize_stir_command({"type": "servo", "target": "reach", "position": "front"})

@@ -8,7 +8,7 @@
 // Testing 1 ESP32-C3 BLE stirrer firmware.
 // Board: ESP32-C3
 // Motor: NEMA 17 through A4988
-// Servos: 2x SG90, controlled one at a time.
+// Servo: 1x SG90 lift servo. Servo movement stops the stepper first.
 
 static const char *DEVICE_NAME = "KitchenStirrer";
 static const char *SERVICE_UUID = "8a4f1000-0b38-4f4d-8b5f-6e5d7f0c1000";
@@ -19,7 +19,6 @@ static const int STEP_PIN = 4;
 static const int DIR_PIN = 5;
 static const int ENABLE_PIN = 6;
 static const int LIFT_SERVO_PIN = 7;
-static const int REACH_SERVO_PIN = 10;
 
 static const uint32_t SERVO_FREQ_HZ = 50;
 static const uint8_t SERVO_PWM_BITS = 14;
@@ -30,9 +29,6 @@ static const uint16_t SERVO_SETTLE_MS = 450;
 
 static const int LIFT_DOWN_ANGLE = 35;
 static const int LIFT_UP_ANGLE = 115;
-static const int REACH_BACK_ANGLE = 35;
-static const int REACH_CENTER_ANGLE = 85;
-static const int REACH_FRONT_ANGLE = 135;
 
 BLECharacteristic *txCharacteristic;
 String serialCommandBuffer = "";
@@ -42,7 +38,6 @@ volatile bool directionClockwise = true;
 volatile uint32_t stepDelayMicros = 2500;
 uint32_t lastStepMicros = 0;
 int liftServoAngle = LIFT_UP_ANGLE;
-int reachServoAngle = REACH_CENTER_ANGLE;
 
 void sendStatus(const String &message) {
   Serial.println(message);
@@ -88,9 +83,7 @@ void writeServoAngle(int pin, int angle) {
 
 void setupServos() {
   ledcAttach(LIFT_SERVO_PIN, SERVO_FREQ_HZ, SERVO_PWM_BITS);
-  ledcAttach(REACH_SERVO_PIN, SERVO_FREQ_HZ, SERVO_PWM_BITS);
   writeServoAngle(LIFT_SERVO_PIN, liftServoAngle);
-  writeServoAngle(REACH_SERVO_PIN, reachServoAngle);
 }
 
 bool moveServoOnly(const String &servoName, int angle, bool report = true) {
@@ -106,16 +99,6 @@ bool moveServoOnly(const String &servoName, int angle, bool report = true) {
     return true;
   }
 
-  if (servoName == "reach") {
-    reachServoAngle = constrain(angle, 0, 180);
-    writeServoAngle(REACH_SERVO_PIN, reachServoAngle);
-    delay(SERVO_SETTLE_MS);
-    if (report) {
-      sendStatus("OK SERVO reach " + String(reachServoAngle));
-    }
-    return true;
-  }
-
   sendStatus("ERR UNKNOWN_SERVO");
   return false;
 }
@@ -125,7 +108,6 @@ void handleServoCommand(String command) {
 
   if (command == "servo home") {
     moveServoOnly("lift", LIFT_UP_ANGLE, false);
-    moveServoOnly("reach", REACH_CENTER_ANGLE, false);
     sendStatus("OK SERVO home");
     return;
   }
@@ -149,12 +131,6 @@ void handleServoCommand(String command) {
   if (servoName == "lift") {
     if (position == "up") angle = LIFT_UP_ANGLE;
     if (position == "down") angle = LIFT_DOWN_ANGLE;
-  }
-
-  if (servoName == "reach") {
-    if (position == "back") angle = REACH_BACK_ANGLE;
-    if (position == "center") angle = REACH_CENTER_ANGLE;
-    if (position == "front") angle = REACH_FRONT_ANGLE;
   }
 
   if (position.startsWith("angle:")) {
@@ -210,7 +186,6 @@ void handleCommand(String command) {
     sendStatus(
       String(motorEnabled ? "STATUS RUNNING" : "STATUS STOPPED")
       + " lift=" + String(liftServoAngle)
-      + " reach=" + String(reachServoAngle)
     );
     return;
   }

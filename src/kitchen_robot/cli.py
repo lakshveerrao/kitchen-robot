@@ -52,7 +52,7 @@ def build_parser() -> argparse.ArgumentParser:
         nargs="?",
         default="status",
     )
-    wired_parser.add_argument("--value", default=None, help="Profile, delay, or servo value like 'reach front'")
+    wired_parser.add_argument("--value", default=None, help="Profile, delay, or servo value like 'lift up'")
     wired_parser.add_argument("--port", default=None, help="Serial port override")
     return parser
 

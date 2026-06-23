@@ -310,9 +310,6 @@ INDEX_HTML = """<!doctype html>
       <div class="grid">
         <button data-action="wired-servo" data-servo-target="lift" data-servo-position="up">Lift Up</button>
         <button data-action="wired-servo" data-servo-target="lift" data-servo-position="down">Lift Down</button>
-        <button data-action="wired-servo" data-servo-target="reach" data-servo-position="front">Reach Front</button>
-        <button data-action="wired-servo" data-servo-target="reach" data-servo-position="back">Reach Back</button>
-        <button data-action="wired-servo" data-servo-target="reach" data-servo-position="center">Reach Center</button>
         <button data-action="wired-servo" data-servo-target="home" data-servo-position="home">Servo Home</button>
       </div>
     </section>
