@@ -152,6 +152,18 @@ INDEX_HTML = """<!doctype html>
     .status.error { background: #fef3f2; color: var(--danger); }
     .status.busy { background: #fffaeb; color: var(--warn); }
 
+    .steps {
+      margin: 0;
+      padding-left: 22px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.65;
+    }
+
+    .steps strong {
+      color: var(--text);
+    }
+
     pre {
       margin: 0;
       min-height: 280px;
@@ -228,10 +240,36 @@ INDEX_HTML = """<!doctype html>
     <section class="wide">
       <h2>Session</h2>
       <div class="grid">
+        <button data-action="upma-mode" class="primary">Upma Making Mode</button>
         <button data-action="mock-run" class="primary">Run Mock Recipe</button>
-        <button data-action="v1-wired-run" class="warn">Run V1 Wired Session</button>
         <button data-action="clear-log">Clear Log</button>
       </div>
+    </section>
+
+    <section class="wide">
+      <h2>Main Steps</h2>
+      <ol class="steps">
+        <li><strong>Safe motor test:</strong> check slow stir, stop, and emergency stop.</li>
+        <li><strong>Camera check:</strong> confirm the kadai is clearly visible.</li>
+        <li><strong>Vision agent:</strong> detect upma stages like suji added, light brown, water added, and thickened.</li>
+        <li><strong>Speech output:</strong> speak recipe instructions through the speaker.</li>
+        <li><strong>Voice input:</strong> add wake word and speech-to-text.</li>
+        <li><strong>Safety agent:</strong> stop stirring if a hand comes near the pan.</li>
+        <li><strong>Dry run:</strong> run full upma flow without heat or food.</li>
+        <li><strong>Cooking test:</strong> cook upma with human supervision.</li>
+      </ol>
+    </section>
+
+    <section class="wide">
+      <h2>Upma Mode</h2>
+      <ol class="steps">
+        <li><strong>Prepare:</strong> place the kadai on heat and add oil.</li>
+        <li><strong>Temper:</strong> add mustard seeds, curry leaves, green chili, and onion. Robot stirs slowly.</li>
+        <li><strong>Roast suji:</strong> add suji. Robot stirs at medium speed and watches for light brown color.</li>
+        <li><strong>Add water:</strong> when suji is light brown, robot asks you to add water slowly while it stirs.</li>
+        <li><strong>Thicken:</strong> robot keeps slow stirring until the upma pulls together.</li>
+        <li><strong>Finish:</strong> robot tells you to turn off heat and stops stirring.</li>
+      </ol>
     </section>
 
     <section class="wide">
@@ -344,6 +382,7 @@ class KitchenRobotRequestHandler(BaseHTTPRequestHandler):
         routes = {
             "/api/mock-run": self._mock_run,
             "/api/v1-wired-run": self._v1_wired_run,
+            "/api/upma-mode": self._v1_wired_run,
             "/api/camera-check": self._camera_check,
             "/api/api-check": self._api_check,
             "/api/ble-scan": self._ble_scan,

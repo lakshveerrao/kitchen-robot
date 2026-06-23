@@ -57,7 +57,7 @@ class Esp32SerialClient:
         self.port = port
         self.baudrate = baudrate
 
-    def send_command(self, command: str, timeout: float = 2.0) -> SerialCommandResult:
+    def send_command(self, command: str, timeout: float = 3.0) -> SerialCommandResult:
         port = self.port or detect_esp32_port()
         if port is None:
             return SerialCommandResult(ok=False, port=None, message="No ESP32 serial port found")
@@ -65,7 +65,7 @@ class Esp32SerialClient:
         fd = os.open(port, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
         try:
             _configure_serial(fd, self.baudrate)
-            time.sleep(0.2)
+            time.sleep(1.5)
             _drain(fd)
             os.write(fd, (command.strip() + "\n").encode("utf-8"))
 
@@ -119,6 +119,8 @@ def _configure_serial(fd: int, baudrate: int) -> None:
     attrs[5] = speed
 
     attrs[2] |= termios.CLOCAL | termios.CREAD
+    if hasattr(termios, "HUPCL"):
+        attrs[2] &= ~termios.HUPCL
     attrs[2] &= ~termios.PARENB
     attrs[2] &= ~termios.CSTOPB
     attrs[2] &= ~termios.CSIZE
