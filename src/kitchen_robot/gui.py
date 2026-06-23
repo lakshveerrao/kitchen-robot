@@ -391,6 +391,7 @@ INDEX_HTML = """<!doctype html>
     let upmaTimer = null;
     let upmaBusy = false;
     let upmaWaitingForAction = false;
+    let upmaSafetyPaused = false;
     let voiceRecognition = null;
     let voiceActiveUntil = 0;
     let voiceListening = false;
@@ -552,6 +553,10 @@ INDEX_HTML = """<!doctype html>
         stopUpmaLive(true);
         return;
       }
+      if (text.includes("clear") || text.includes("cleared") || text.includes("continue") || text.includes("resume") || text.includes("safe")) {
+        resumeAfterSafety();
+        return;
+      }
       if (text.includes("start upma") || text.includes("make upma") || text.includes("upma start")) {
         runUpmaMode();
         return;
@@ -681,7 +686,7 @@ INDEX_HTML = """<!doctype html>
     }
 
     async function analyzeUpmaStep(manual) {
-      if (!upmaRunning || upmaBusy) return;
+      if (!upmaRunning || upmaBusy || upmaSafetyPaused) return;
       upmaBusy = true;
       const step = { ...currentUpmaStep() };
       step.phase = upmaWaitingForAction ? "awaiting_human_addition" : "cooking_stage";
@@ -716,8 +721,8 @@ INDEX_HTML = """<!doctype html>
 
         if (isUnsafeObservation(safetyStop, safetyNotes, summary)) {
           appendLog("Safety Agent", `Possible unsafe condition: ${safetyNotes || summary}`);
-          speak("Safety stop. I see a possible hand, burning, smoke, or unsafe condition.");
-          await stopUpmaLive(true);
+          speak("Safety stop. Please clear the area, then say cleared or continue.");
+          await pauseForSafety(safetyNotes || summary);
           return;
         }
 
@@ -753,6 +758,48 @@ INDEX_HTML = """<!doctype html>
     function isUnsafeObservation(safetyStop, safetyNotes, summary) {
       const text = `${safetyNotes || ""} ${summary || ""}`.toLowerCase();
       return safetyStop || ["hand", "finger", "burn", "burning", "smoke", "fire", "blackening", "cloth", "cable"].some(word => text.includes(word));
+    }
+
+    async function pauseForSafety(reason) {
+      upmaSafetyPaused = true;
+      clearTimeout(upmaTimer);
+      upmaTimer = null;
+      visionState.textContent = "Safety paused";
+      setAgentText(mainAgent, "Paused for safety");
+      setAgentText(safetyAgent, reason || "Unsafe object detected");
+      setAgentText(stirAgent, "Emergency stop");
+      await callApi("/api/wired-emergency", {}, { keepControlsEnabled: true });
+      appendLog("Upma Live", "Paused for safety. Clear the area, then say cleared or continue.");
+    }
+
+    async function resumeAfterSafety() {
+      if (!upmaRunning) {
+        appendLog("Safety Agent", "Nothing is running to resume.");
+        return;
+      }
+      if (!upmaSafetyPaused) {
+        appendLog("Safety Agent", "No active safety pause. Continuing normal watch.");
+        analyzeUpmaStep(true);
+        return;
+      }
+
+      appendLog("Safety Agent", "User says area is clear. Checking once before continuing.");
+      speak("Checking safety. If clear, I will continue.");
+      setAgentText(safetyAgent, "Checking clear");
+      upmaSafetyPaused = false;
+      const wasBusy = upmaBusy;
+      upmaBusy = false;
+      await analyzeUpmaStep(true);
+      upmaBusy = wasBusy && upmaBusy;
+      if (!upmaSafetyPaused) {
+        setAgentText(safetyAgent, "Clear");
+        speak("Continuing.");
+        if (!upmaWaitingForAction && currentUpmaStep().stir_mode) {
+          await applyStirMode(currentUpmaStep().stir_mode);
+        }
+        clearTimeout(upmaTimer);
+        upmaTimer = setTimeout(() => analyzeUpmaStep(false), 2000);
+      }
     }
 
     function userSaysAdded() {
@@ -798,6 +845,7 @@ INDEX_HTML = """<!doctype html>
     async function stopUpmaLive(emergency) {
       upmaRunning = false;
       upmaWaitingForAction = false;
+      upmaSafetyPaused = false;
       clearTimeout(upmaTimer);
       upmaTimer = null;
       currentStep.textContent = "Stopped";
