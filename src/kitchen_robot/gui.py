@@ -4,8 +4,10 @@ import base64
 import contextlib
 import io
 import json
+from multiprocessing import Queue, get_context
 import os
 from pathlib import Path
+from queue import Empty
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import subprocess
@@ -389,6 +391,7 @@ INDEX_HTML = """<!doctype html>
     let upmaTimer = null;
     let upmaBusy = false;
     let upmaWaitingForAction = false;
+    let upmaFastAddCheck = false;
     let voiceRecognition = null;
     let voiceActiveUntil = 0;
     let voiceListening = false;
@@ -691,15 +694,19 @@ INDEX_HTML = """<!doctype html>
         setAgentText(visionAgent, "Sending one frame");
         const data = await callApi("/api/browser-vision-check", {
           frame_jpeg: frameJpeg,
-          step
+          step,
+          fast_check: upmaFastAddCheck
         }, { keepControlsEnabled: true });
 
         if (!data || !data.ok) {
           visionState.textContent = "Vision timeout";
-          setAgentText(visionAgent, "Timed out; use Analyze Now or Next Step");
+          setAgentText(
+            visionAgent,
+            upmaFastAddCheck ? "Fast check timed out; say added again or press Analyze Now" : "Timed out; use Analyze Now or Next Step"
+          );
           setAgentText(mainAgent, "Waiting for user");
           clearTimeout(upmaTimer);
-          upmaTimer = setTimeout(() => analyzeUpmaStep(false), UPMA_SAMPLE_MS * 2);
+          upmaTimer = setTimeout(() => analyzeUpmaStep(false), upmaWaitingForAction ? 6000 : UPMA_SAMPLE_MS * 2);
           return;
         }
         const observation = data.observation || {};
@@ -722,7 +729,7 @@ INDEX_HTML = """<!doctype html>
           if (upmaWaitingForAction) {
             upmaWaitingForAction = false;
             appendLog("Main Agent", `I detected the add step for ${step.label}. Now I will stir and watch the cooking stage.\\n${summary}`);
-            speak("Okay, I detected it. I will stir now.");
+            speak("Detected. Stirring now.");
             await applyStirMode(currentUpmaStep().stir_mode);
             clearTimeout(upmaTimer);
             upmaTimer = setTimeout(() => analyzeUpmaStep(false), UPMA_SAMPLE_MS);
@@ -757,9 +764,12 @@ INDEX_HTML = """<!doctype html>
         appendLog("Voice Agent", "I heard added, but Upma Live is not running.");
         return;
       }
-      appendLog("Voice Agent", "User said the ingredient was added. I will verify with vision before stirring.");
-      speak("Okay, I will check and then stir.");
-      analyzeUpmaStep(true);
+      appendLog("Voice Agent", "User said the ingredient was added. Fast checking now.");
+      speak("Checking now.");
+      upmaFastAddCheck = true;
+      analyzeUpmaStep(true).finally(() => {
+        upmaFastAddCheck = false;
+      });
     }
 
     async function nextUpmaStep() {
@@ -785,7 +795,7 @@ INDEX_HTML = """<!doctype html>
 
     function timeoutForAction(path, payload) {
       if (path.includes("browser-camera-check")) return 12000;
-      if (path.includes("browser-vision-check")) return 18000;
+      if (path.includes("browser-vision-check")) return payload.fast_check ? 2000 : 18000;
       if (path.includes("camera-check")) return Math.max(12000, (Number(payload.seconds) + 8) * 1000);
       if (path.includes("upma-mode")) return 25000;
       return 12000;
@@ -1076,20 +1086,36 @@ class KitchenRobotRequestHandler(BaseHTTPRequestHandler):
         if not settings.openai_api_key:
             return {"ok": False, "output": "OPENAI_API_KEY is missing from .env", "code": 1}
 
-        async def run() -> dict[str, Any]:
-            from kitchen_robot.services.openai_gateway import OpenAiGateway
-
-            gateway = OpenAiGateway(settings)
-            observation = await gateway.inspect_video_window(
-                recipe_step=step,
-                jpeg_frames=[frame],
+        fast_check = bool(payload.get("fast_check", False))
+        if fast_check:
+            result = _run_browser_vision_worker(
+                settings=settings,
+                step=step,
+                frame=frame,
+                timeout=2.0,
             )
-            return observation
+            if not result["ok"]:
+                return {
+                    "ok": False,
+                    "output": "Fast add check timed out. Say added again or press Analyze Now.",
+                    "code": 124,
+                }
+            observation = result["observation"]
+        else:
+            async def run() -> dict[str, Any]:
+                from kitchen_robot.services.openai_gateway import OpenAiGateway
 
-        try:
-            observation = asyncio.run(run())
-        except Exception as exc:
-            return {"ok": False, "output": f"Vision Agent failed: {exc}", "code": 1}
+                gateway = OpenAiGateway(settings)
+                observation = await gateway.inspect_video_window(
+                    recipe_step=step,
+                    jpeg_frames=[frame],
+                )
+                return observation
+
+            try:
+                observation = asyncio.run(run())
+            except Exception as exc:
+                return {"ok": False, "output": f"Vision Agent failed: {exc}", "code": 1}
 
         goal_met = bool(observation.get("goal_met", False))
         confidence = float(observation.get("confidence", 0.0))
@@ -1217,6 +1243,53 @@ def _capture_async(coro: Any) -> dict[str, Any]:
         return {"ok": False, "output": output}
 
     return {"ok": code == 0, "output": buffer.getvalue(), "code": code}
+
+
+def _run_browser_vision_worker(
+    settings: Settings,
+    step: dict[str, Any],
+    frame: bytes,
+    timeout: float,
+) -> dict[str, Any]:
+    context = get_context("spawn")
+    queue: Queue = context.Queue()
+    process = context.Process(
+        target=_browser_vision_worker,
+        args=(settings, step, frame, queue),
+    )
+    process.start()
+    process.join(timeout)
+
+    if process.is_alive():
+        process.terminate()
+        process.join(0.5)
+        return {"ok": False, "error": f"Vision worker timed out after {timeout:.1f}s"}
+
+    try:
+        return queue.get_nowait()
+    except Empty:
+        return {"ok": False, "error": "Vision worker exited without a result"}
+
+
+def _browser_vision_worker(
+    settings: Settings,
+    step: dict[str, Any],
+    frame: bytes,
+    queue: Queue,
+) -> None:
+    async def run() -> dict[str, Any]:
+        from kitchen_robot.services.openai_gateway import OpenAiGateway
+
+        gateway = OpenAiGateway(settings)
+        return await gateway.inspect_video_window(
+            recipe_step=step,
+            jpeg_frames=[frame],
+        )
+
+    try:
+        queue.put({"ok": True, "observation": asyncio.run(run())})
+    except Exception as exc:
+        queue.put({"ok": False, "error": str(exc)})
 
 
 def _decode_browser_frame(data_url: str) -> bytes:
