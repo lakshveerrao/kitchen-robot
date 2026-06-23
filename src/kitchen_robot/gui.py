@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import base64
 import contextlib
 import io
 import json
@@ -167,6 +168,26 @@ INDEX_HTML = """<!doctype html>
       color: var(--text);
     }
 
+    .camera-box {
+      display: grid;
+      gap: 10px;
+    }
+
+    video {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: #101828;
+      object-fit: cover;
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
     pre {
       margin: 0;
       min-height: 280px;
@@ -208,9 +229,22 @@ INDEX_HTML = """<!doctype html>
         </div>
       </div>
       <div class="grid">
-        <button data-action="camera-check">Check Camera</button>
+        <button data-action="camera-check">Check Python Camera</button>
+        <button data-action="ask-browser-camera" class="primary">Ask Chrome Camera Permission</button>
+        <button data-action="browser-camera-check">Check Browser Camera</button>
         <button data-action="serial-scan">Find Wired ESP32</button>
         <button data-action="api-check">Check API Key</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>Camera Preview</h2>
+      <div class="camera-box">
+        <video id="cameraPreview" autoplay playsinline muted></video>
+        <canvas id="cameraCanvas" hidden></canvas>
+        <div class="hint">
+          Use Google Chrome and click <strong>Ask Chrome Camera Permission</strong>. When Chrome asks, choose Allow.
+        </div>
       </div>
     </section>
 
@@ -293,6 +327,9 @@ INDEX_HTML = """<!doctype html>
   <script>
     const log = document.getElementById("log");
     const state = document.getElementById("state");
+    const cameraPreview = document.getElementById("cameraPreview");
+    const cameraCanvas = document.getElementById("cameraCanvas");
+    let browserCameraStream = null;
 
     function setState(text, cls = "") {
       state.className = `status ${cls}`.trim();
@@ -306,7 +343,67 @@ INDEX_HTML = """<!doctype html>
       log.scrollTop = log.scrollHeight;
     }
 
+    async function startBrowserCamera() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("This browser does not support camera access. Open http://127.0.0.1:8787/ in Google Chrome.");
+      }
+
+      if (!browserCameraStream) {
+        browserCameraStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            facingMode: "environment"
+          },
+          audio: false
+        });
+        cameraPreview.srcObject = browserCameraStream;
+      }
+
+      await cameraPreview.play();
+      return browserCameraStream;
+    }
+
+    function captureBrowserFrame() {
+      if (!browserCameraStream || !cameraPreview.videoWidth) {
+        throw new Error("Camera is not ready. Click Ask Chrome Camera Permission first.");
+      }
+
+      cameraCanvas.width = cameraPreview.videoWidth;
+      cameraCanvas.height = cameraPreview.videoHeight;
+      const context = cameraCanvas.getContext("2d");
+      context.drawImage(cameraPreview, 0, 0, cameraCanvas.width, cameraCanvas.height);
+      return cameraCanvas.toDataURL("image/jpeg", 0.72);
+    }
+
+    async function askBrowserCamera() {
+      setState("Asking Camera", "busy");
+      try {
+        await startBrowserCamera();
+        appendLog(
+          "OK",
+          `Chrome camera permission is working. Preview size: ${cameraPreview.videoWidth}x${cameraPreview.videoHeight}`
+        );
+        setState("Ready", "ok");
+      } catch (error) {
+        appendLog("Camera Permission Problem", String(error));
+        setState("Needs Attention", "error");
+      }
+    }
+
+    async function browserCameraCheck() {
+      try {
+        await startBrowserCamera();
+        const frameJpeg = captureBrowserFrame();
+        await callApi("/api/browser-camera-check", { frame_jpeg: frameJpeg });
+      } catch (error) {
+        appendLog("Camera Error", String(error));
+        setState("Error", "error");
+      }
+    }
+
     function timeoutForAction(path, payload) {
+      if (path.includes("browser-camera-check")) return 12000;
       if (path.includes("camera-check")) return Math.max(12000, (Number(payload.seconds) + 8) * 1000);
       if (path.includes("upma-mode")) return 25000;
       return 12000;
@@ -347,6 +444,16 @@ INDEX_HTML = """<!doctype html>
       if (action === "clear-log") {
         log.textContent = "Waiting for command...";
         setState("Ready");
+        return;
+      }
+
+      if (action === "ask-browser-camera") {
+        askBrowserCamera();
+        return;
+      }
+
+      if (action === "browser-camera-check") {
+        browserCameraCheck();
         return;
       }
 
@@ -401,6 +508,7 @@ class KitchenRobotRequestHandler(BaseHTTPRequestHandler):
             "/api/v1-wired-run": self._v1_wired_run,
             "/api/upma-mode": self._v1_wired_run,
             "/api/camera-check": self._camera_check,
+            "/api/browser-camera-check": self._browser_camera_check,
             "/api/api-check": self._api_check,
             "/api/ble-scan": self._ble_scan,
             "/api/serial-scan": self._serial_scan,
@@ -483,6 +591,22 @@ class KitchenRobotRequestHandler(BaseHTTPRequestHandler):
                 "Most likely reason: macOS camera permission, wrong camera index, or another app is using the camera."
             ),
         )
+
+    def _browser_camera_check(self, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            frame = _decode_browser_frame(str(payload.get("frame_jpeg") or ""))
+        except ValueError as exc:
+            return {"ok": False, "output": str(exc), "code": 1}
+
+        return {
+            "ok": True,
+            "output": (
+                "browser camera ok: Chrome captured 1 frame.\n"
+                f"JPEG size: {len(frame)} bytes.\n"
+                "This fixes the camera permission path for Testing 1."
+            ),
+            "code": 0,
+        }
 
     def _api_check(self, payload: dict[str, Any]) -> dict[str, Any]:
         settings = Settings.from_env(mock=False)
@@ -585,6 +709,21 @@ def _capture_async(coro: Any) -> dict[str, Any]:
         return {"ok": False, "output": output}
 
     return {"ok": code == 0, "output": buffer.getvalue(), "code": code}
+
+
+def _decode_browser_frame(data_url: str) -> bytes:
+    prefix = "data:image/jpeg;base64,"
+    if not data_url.startswith(prefix):
+        raise ValueError("Browser camera frame is missing. Click Ask Chrome Camera Permission first.")
+
+    try:
+        frame = base64.b64decode(data_url[len(prefix) :], validate=True)
+    except ValueError as exc:
+        raise ValueError("Browser camera frame could not be decoded.") from exc
+
+    if len(frame) < 1000:
+        raise ValueError("Browser camera frame is too small. Try camera permission again.")
+    return frame
 
 
 def _run_cli(
