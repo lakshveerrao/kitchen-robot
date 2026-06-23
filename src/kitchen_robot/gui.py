@@ -402,6 +402,27 @@ INDEX_HTML = """<!doctype html>
       }
     }
 
+    async function runUpmaMode() {
+      try {
+        await startBrowserCamera();
+        const frameJpeg = captureBrowserFrame();
+        const cameraIndex = Number(document.getElementById("cameraIndex").value);
+        const seconds = Number(document.getElementById("seconds").value);
+        const profile = document.getElementById("profile").value;
+        const delay = document.getElementById("delay").value;
+        await callApi("/api/upma-mode", {
+          camera_index: cameraIndex,
+          seconds,
+          profile,
+          delay,
+          browser_frame_jpeg: frameJpeg
+        });
+      } catch (error) {
+        appendLog("Camera Error", String(error));
+        setState("Error", "error");
+      }
+    }
+
     function timeoutForAction(path, payload) {
       if (path.includes("browser-camera-check")) return 12000;
       if (path.includes("camera-check")) return Math.max(12000, (Number(payload.seconds) + 8) * 1000);
@@ -454,6 +475,11 @@ INDEX_HTML = """<!doctype html>
 
       if (action === "browser-camera-check") {
         browserCameraCheck();
+        return;
+      }
+
+      if (action === "upma-mode") {
+        runUpmaMode();
         return;
       }
 
@@ -549,36 +575,65 @@ class KitchenRobotRequestHandler(BaseHTTPRequestHandler):
         return _capture_async(run())
 
     def _v1_wired_run(self, payload: dict[str, Any]) -> dict[str, Any]:
-        camera_index = str(int(payload.get("camera_index", 0)))
-        seconds = str(min(float(payload.get("seconds", 2)), 2.0))
-        camera_result = _run_cli(
-            ["camera-check", "--camera-index", camera_index, "--seconds", seconds],
-            timeout=max(8, float(seconds) + 6),
-            timeout_message=(
-                "Upma mode did not start because camera preflight timed out.\n"
-                "Most likely reason: macOS camera permission, wrong camera index, or another app is using the camera."
-            ),
-        )
-        if not camera_result["ok"]:
+        browser_frame = str(payload.get("browser_frame_jpeg") or "")
+        if browser_frame:
+            try:
+                frame = _decode_browser_frame(browser_frame)
+            except ValueError as exc:
+                return {
+                    "ok": False,
+                    "output": f"Upma mode did not start, so the motor was not started.\n\n{exc}",
+                    "code": 1,
+                }
+            camera_preflight_output = (
+                "Chrome camera preflight passed.\n"
+                f"Browser JPEG size: {len(frame)} bytes."
+            )
             return {
-                "ok": False,
+                "ok": True,
                 "output": (
-                    "Upma mode did not start, so the motor was not started.\n\n"
-                    f"{camera_result['output']}"
+                    f"{camera_preflight_output}\n\n"
+                    "Upma Mode is ready using Chrome camera.\n"
+                    "For this Testing 1 build, use Start Profile and Stop for stirring while Chrome camera stays live.\n"
+                    "Next software step is connecting the live Chrome frames into the vision agent loop."
                 ),
-                "code": camera_result.get("code", 1),
+                "code": 0,
             }
+        else:
+            camera_index = str(int(payload.get("camera_index", 0)))
+            seconds = str(min(float(payload.get("seconds", 2)), 2.0))
+            camera_result = _run_cli(
+                ["camera-check", "--camera-index", camera_index, "--seconds", seconds],
+                timeout=max(8, float(seconds) + 6),
+                timeout_message=(
+                    "Upma mode did not start because camera preflight timed out.\n"
+                    "Most likely reason: macOS camera permission, wrong camera index, or another app is using the camera."
+                ),
+            )
+            if not camera_result["ok"]:
+                return {
+                    "ok": False,
+                    "output": (
+                        "Upma mode did not start, so the motor was not started.\n\n"
+                        f"{camera_result['output']}"
+                    ),
+                    "code": camera_result.get("code", 1),
+                }
+            camera_preflight_output = camera_result["output"]
 
-        return _run_cli(
+        result = _run_cli(
             ["run", "--recipe", "upma"],
             timeout=22,
             timeout_message=(
                 "Upma mode took too long and was stopped.\n"
-                "Most likely reason: camera capture, OpenAI vision, or ESP32 serial did not answer.\n"
+                "Chrome camera preflight passed, but the current recipe runner still needs browser-frame vision integration.\n"
                 "I sent emergency stop to the stirrer before returning this message."
             ),
             emergency_stop_on_timeout=True,
         )
+        if result.get("output"):
+            result["output"] = f"{camera_preflight_output}\n\n{result['output']}"
+        return result
 
     def _camera_check(self, payload: dict[str, Any]) -> dict[str, Any]:
         camera_index = str(int(payload.get("camera_index", 0)))
