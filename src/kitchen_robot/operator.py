@@ -8,6 +8,7 @@ from kitchen_robot.transports.serial_wire import (
     Esp32SerialClient,
     detect_esp32_port,
     list_serial_devices,
+    serialize_serial_stir_command,
 )
 from kitchen_robot.transports.ble import payload_from_cli_command, serialize_stir_command
 
@@ -85,7 +86,7 @@ async def serial_scan() -> int:
 
 async def wired_stirrer_command(command: str, value: str | None, port: str | None = None) -> int:
     payload = payload_from_cli_command(command, value)
-    serialized = serialize_stir_command(payload)
+    serialized = serialize_serial_stir_command(payload)
     client = Esp32SerialClient(port=port)
     print(f"sending over USB serial: {serialized}")
     result = client.send_command(serialized)

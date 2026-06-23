@@ -3,8 +3,7 @@ import asyncio
 from kitchen_robot.agents.base import Agent
 from kitchen_robot.config import Settings
 from kitchen_robot.messages import AgentEvent, AgentName, EventType
-from kitchen_robot.transports.ble import serialize_stir_command
-from kitchen_robot.transports.serial_wire import Esp32SerialClient
+from kitchen_robot.transports.serial_wire import Esp32SerialClient, serialize_serial_stir_command
 
 
 class Esp32SerialAgent(Agent):
@@ -16,7 +15,7 @@ class Esp32SerialAgent(Agent):
         if event.event_type != EventType.STIR_COMMAND:
             return []
 
-        command = serialize_stir_command(event.payload)
+        command = serialize_serial_stir_command(event.payload)
         if self.settings.mock:
             print(f"[esp32-serial/mock] {command}")
             return [

@@ -21,6 +21,27 @@ class SerialCommandResult:
     message: str
 
 
+def serialize_serial_stir_command(payload: dict) -> str:
+    command_type = payload.get("type")
+
+    if command_type == "start_profile":
+        profile = str(payload.get("profile", "slow"))
+        delay_by_profile = {
+            "slow": 5000,
+            "medium": 2500,
+            "fast": 1200,
+        }
+        return f"start {delay_by_profile.get(profile, 5000)}"
+
+    if command_type == "start_delay":
+        return f"start {int(payload['delay_micros'])}"
+
+    if command_type in {"status", "stop", "emergency_stop", "reverse"}:
+        return str(command_type)
+
+    raise ValueError(f"Unsupported wired stir command: {payload}")
+
+
 def list_serial_devices() -> list[SerialDeviceInfo]:
     devices = []
     for port in sorted(set(glob.glob("/dev/cu.*") + glob.glob("/dev/tty.*"))):
