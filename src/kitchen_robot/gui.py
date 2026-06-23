@@ -564,10 +564,10 @@ INDEX_HTML = """<!doctype html>
     async function applyStirMode(stirMode) {
       if (stirMode) {
         setAgentText(stirAgent, `Starting ${stirMode}`);
-        await callApi("/api/wired-start-profile", { profile: stirMode });
+        await callApi("/api/wired-start-profile", { profile: stirMode }, { keepControlsEnabled: true });
       } else {
         setAgentText(stirAgent, "Stopping");
-        await callApi("/api/wired-stop", {});
+        await callApi("/api/wired-stop", {}, { keepControlsEnabled: true });
       }
     }
 
@@ -583,9 +583,16 @@ INDEX_HTML = """<!doctype html>
         const data = await callApi("/api/browser-vision-check", {
           frame_jpeg: frameJpeg,
           step
-        });
+        }, { keepControlsEnabled: true });
 
-        if (!data || !data.ok) return;
+        if (!data || !data.ok) {
+          visionState.textContent = "Vision timeout";
+          setAgentText(visionAgent, "Timed out; use Analyze Now or Next Step");
+          setAgentText(mainAgent, "Waiting for user");
+          clearTimeout(upmaTimer);
+          upmaTimer = setTimeout(() => analyzeUpmaStep(false), UPMA_SAMPLE_MS * 2);
+          return;
+        }
         const observation = data.observation || {};
         const confidence = Number(observation.confidence || 0);
         const summary = observation.summary || "No summary";
@@ -637,21 +644,36 @@ INDEX_HTML = """<!doctype html>
       visionState.textContent = "Idle";
       setAgentText(mainAgent, "Stopped");
       setAgentText(stirAgent, emergency ? "Emergency stop" : "Stop");
-      await callApi(emergency ? "/api/wired-emergency" : "/api/wired-stop", {});
+      await callApi(emergency ? "/api/wired-emergency" : "/api/wired-stop", {}, { keepControlsEnabled: true });
       appendLog("Upma Live", emergency ? "Emergency stopped." : "Stopped.");
     }
 
     function timeoutForAction(path, payload) {
       if (path.includes("browser-camera-check")) return 12000;
-      if (path.includes("browser-vision-check")) return 30000;
+      if (path.includes("browser-vision-check")) return 18000;
       if (path.includes("camera-check")) return Math.max(12000, (Number(payload.seconds) + 8) * 1000);
       if (path.includes("upma-mode")) return 25000;
       return 12000;
     }
 
-    async function callApi(path, payload = {}) {
+    function setButtonsDisabled(disabled, keepControlsEnabled) {
+      document.querySelectorAll("button").forEach(button => {
+        const action = button.dataset.action || "";
+        const alwaysEnabled = [
+          "wired-emergency",
+          "wired-stop",
+          "upma-stop",
+          "upma-next",
+          "upma-analyze",
+          "clear-log"
+        ].includes(action);
+        button.disabled = disabled && !(keepControlsEnabled && alwaysEnabled);
+      });
+    }
+
+    async function callApi(path, payload = {}, options = {}) {
       setState("Running", "busy");
-      document.querySelectorAll("button").forEach(button => button.disabled = true);
+      setButtonsDisabled(true, Boolean(options.keepControlsEnabled));
       const controller = new AbortController();
       const timeoutMs = timeoutForAction(path, payload);
       const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -675,7 +697,7 @@ INDEX_HTML = """<!doctype html>
         return { ok: false, output: message };
       } finally {
         clearTimeout(timer);
-        document.querySelectorAll("button").forEach(button => button.disabled = false);
+        setButtonsDisabled(false, false);
       }
     }
 
