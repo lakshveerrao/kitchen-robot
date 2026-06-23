@@ -52,7 +52,9 @@ class OpenAiGateway:
             "You are the Vision Agent for a kitchen robot. These images are sampled "
             "from a short live video window, in order. Evaluate the cooking state for "
             "the current upma recipe step. Return compact JSON only with keys: "
-            "goal_met boolean, confidence number 0-1, summary string, safety_notes string. "
+            "goal_met boolean, confidence number 0-1, summary string, safety_notes string, "
+            "safety_stop boolean. Set safety_stop true if a hand, face, cloth, cable, "
+            "or unsafe object is near the pan or stirrer boundary. "
             f"Current step: {json.dumps(recipe_step)}"
         )
 
@@ -98,4 +100,3 @@ class OpenAiGateway:
         if not isinstance(value, dict):
             return {"advance_step": False, "say": str(value), "confidence": 0.0}
         return value
-

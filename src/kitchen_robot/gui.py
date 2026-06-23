@@ -188,6 +188,38 @@ INDEX_HTML = """<!doctype html>
       line-height: 1.45;
     }
 
+    .agent-strip {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .agent-pill {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 8px;
+      font-size: 12px;
+      color: var(--muted);
+      background: #ffffff;
+    }
+
+    .agent-pill strong {
+      display: block;
+      color: var(--text);
+      font-size: 12px;
+      margin-bottom: 2px;
+    }
+
+    .session-status {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
     pre {
       margin: 0;
       min-height: 280px;
@@ -205,7 +237,7 @@ INDEX_HTML = """<!doctype html>
     @media (max-width: 760px) {
       header { align-items: flex-start; flex-direction: column; }
       main { grid-template-columns: 1fr; padding: 14px; }
-      .field-row, .grid { grid-template-columns: 1fr; }
+      .field-row, .grid, .agent-strip, .session-status { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -277,9 +309,23 @@ INDEX_HTML = """<!doctype html>
     <section class="wide">
       <h2>Session</h2>
       <div class="grid">
-        <button data-action="upma-mode" class="primary">Upma Making Mode</button>
+        <button data-action="upma-mode" class="primary">Start Upma Live</button>
+        <button data-action="upma-next">Next Step</button>
+        <button data-action="upma-analyze">Analyze Now</button>
+        <button data-action="upma-stop" class="danger">Stop Upma Live</button>
         <button data-action="mock-run" class="primary">Run Mock Recipe</button>
         <button data-action="clear-log">Clear Log</button>
+      </div>
+      <div class="session-status">
+        <div><strong>Current step:</strong> <span id="currentStep">Not started</span></div>
+        <div><strong>Vision:</strong> <span id="visionState">Idle</span></div>
+      </div>
+      <div class="agent-strip">
+        <div class="agent-pill"><strong>Voice</strong><span id="voiceAgent">Browser speech ready</span></div>
+        <div class="agent-pill"><strong>Vision</strong><span id="visionAgent">Chrome frames</span></div>
+        <div class="agent-pill"><strong>Main</strong><span id="mainAgent">Waiting</span></div>
+        <div class="agent-pill"><strong>Stirring</strong><span id="stirAgent">USB wired</span></div>
+        <div class="agent-pill"><strong>Safety</strong><span id="safetyAgent">Emergency stop ready</span></div>
       </div>
     </section>
 
@@ -329,7 +375,71 @@ INDEX_HTML = """<!doctype html>
     const state = document.getElementById("state");
     const cameraPreview = document.getElementById("cameraPreview");
     const cameraCanvas = document.getElementById("cameraCanvas");
+    const currentStep = document.getElementById("currentStep");
+    const visionState = document.getElementById("visionState");
+    const voiceAgent = document.getElementById("voiceAgent");
+    const visionAgent = document.getElementById("visionAgent");
+    const mainAgent = document.getElementById("mainAgent");
+    const stirAgent = document.getElementById("stirAgent");
+    const safetyAgent = document.getElementById("safetyAgent");
     let browserCameraStream = null;
+    let upmaRunning = false;
+    let upmaStepIndex = 0;
+    let upmaTimer = null;
+    let upmaBusy = false;
+
+    const UPMA_SAMPLE_MS = 9000;
+    const UPMA_CONFIDENCE_TO_ADVANCE = 0.65;
+    const UPMA_RECIPE = [
+      {
+        step_id: "prepare",
+        label: "Prepare",
+        instruction: "Place the kadai on heat and add oil.",
+        human_action: "Add oil to the kadai.",
+        stir_mode: null,
+        vision_goal: "kadai visible with oil added"
+      },
+      {
+        step_id: "temper",
+        label: "Temper",
+        instruction: "Add mustard seeds, curry leaves, green chili, and onion.",
+        human_action: "Add tempering ingredients.",
+        stir_mode: "slow",
+        vision_goal: "onion starts softening"
+      },
+      {
+        step_id: "roast_suji",
+        label: "Roast suji",
+        instruction: "Add suji. I will stir while it roasts until light brown.",
+        human_action: "Add suji.",
+        stir_mode: "medium",
+        vision_goal: "suji turns light brown"
+      },
+      {
+        step_id: "add_water",
+        label: "Add water",
+        instruction: "The suji looks ready. Add water slowly while I stir.",
+        human_action: "Add water slowly.",
+        stir_mode: "slow",
+        vision_goal: "water added and mixture bubbling"
+      },
+      {
+        step_id: "cook_thicken",
+        label: "Thicken",
+        instruction: "Let it cook while I stir until it thickens.",
+        human_action: "",
+        stir_mode: "slow",
+        vision_goal: "upma thickened and pulling together"
+      },
+      {
+        step_id: "finish",
+        label: "Finish",
+        instruction: "Upma looks done. Turn off the heat.",
+        human_action: "Turn off heat.",
+        stir_mode: null,
+        vision_goal: "finished upma consistency"
+      }
+    ];
 
     function setState(text, cls = "") {
       state.className = `status ${cls}`.trim();
@@ -341,6 +451,20 @@ INDEX_HTML = """<!doctype html>
       if (log.textContent === "Waiting for command...") log.textContent = "";
       log.textContent += `[${time}] ${title}\\n${body}\\n\\n`;
       log.scrollTop = log.scrollHeight;
+    }
+
+    function speak(text) {
+      if (!("speechSynthesis" in window)) return;
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 0.95;
+      utterance.pitch = 1.0;
+      window.speechSynthesis.speak(utterance);
+      voiceAgent.textContent = "Speaking";
+    }
+
+    function setAgentText(element, text) {
+      element.textContent = text;
     }
 
     async function startBrowserCamera() {
@@ -405,26 +529,121 @@ INDEX_HTML = """<!doctype html>
     async function runUpmaMode() {
       try {
         await startBrowserCamera();
-        const frameJpeg = captureBrowserFrame();
-        const cameraIndex = Number(document.getElementById("cameraIndex").value);
-        const seconds = Number(document.getElementById("seconds").value);
-        const profile = document.getElementById("profile").value;
-        const delay = document.getElementById("delay").value;
-        await callApi("/api/upma-mode", {
-          camera_index: cameraIndex,
-          seconds,
-          profile,
-          delay,
-          browser_frame_jpeg: frameJpeg
-        });
+        upmaRunning = true;
+        upmaStepIndex = 0;
+        appendLog("Upma Live", "Started live Upma mode with Chrome camera and wired stirrer.");
+        await enterUpmaStep(0);
       } catch (error) {
         appendLog("Camera Error", String(error));
         setState("Error", "error");
       }
     }
 
+    function currentUpmaStep() {
+      return UPMA_RECIPE[upmaStepIndex];
+    }
+
+    async function enterUpmaStep(index) {
+      if (!upmaRunning) return;
+      upmaStepIndex = Math.min(index, UPMA_RECIPE.length - 1);
+      const step = currentUpmaStep();
+      currentStep.textContent = `${step.label}: ${step.vision_goal}`;
+      visionState.textContent = "Waiting for sample";
+      setAgentText(mainAgent, "Guiding");
+      setAgentText(visionAgent, "Chrome camera ready");
+
+      const message = step.human_action ? `${step.instruction} ${step.human_action}` : step.instruction;
+      appendLog("Recipe Agent", `${step.label}\\n${message}`);
+      speak(message);
+      await applyStirMode(step.stir_mode);
+
+      clearTimeout(upmaTimer);
+      upmaTimer = setTimeout(() => analyzeUpmaStep(false), 1200);
+    }
+
+    async function applyStirMode(stirMode) {
+      if (stirMode) {
+        setAgentText(stirAgent, `Starting ${stirMode}`);
+        await callApi("/api/wired-start-profile", { profile: stirMode });
+      } else {
+        setAgentText(stirAgent, "Stopping");
+        await callApi("/api/wired-stop", {});
+      }
+    }
+
+    async function analyzeUpmaStep(manual) {
+      if (!upmaRunning || upmaBusy) return;
+      upmaBusy = true;
+      const step = currentUpmaStep();
+      try {
+        await startBrowserCamera();
+        const frameJpeg = captureBrowserFrame();
+        visionState.textContent = manual ? "Manual analyze" : "Sampling";
+        setAgentText(visionAgent, "Sending one frame");
+        const data = await callApi("/api/browser-vision-check", {
+          frame_jpeg: frameJpeg,
+          step
+        });
+
+        if (!data || !data.ok) return;
+        const observation = data.observation || {};
+        const confidence = Number(observation.confidence || 0);
+        const summary = observation.summary || "No summary";
+        const safetyNotes = observation.safety_notes || "";
+        const safetyStop = Boolean(observation.safety_stop);
+        visionState.textContent = `${confidence.toFixed(2)} confidence`;
+        setAgentText(visionAgent, summary);
+        setAgentText(mainAgent, observation.goal_met ? "Stage ready" : "Keep watching");
+
+        if (safetyStop || safetyNotes.toLowerCase().includes("hand")) {
+          appendLog("Safety Agent", `Possible unsafe condition: ${safetyNotes || summary}`);
+          speak("Safety stop. I am stopping the stirrer.");
+          await stopUpmaLive(true);
+          return;
+        }
+
+        if (observation.goal_met && confidence >= UPMA_CONFIDENCE_TO_ADVANCE) {
+          appendLog("Main Agent", `Goal met for ${step.label}. Moving to next step.\\n${summary}`);
+          if (upmaStepIndex >= UPMA_RECIPE.length - 1) {
+            await stopUpmaLive(false);
+            speak("Upma flow is complete.");
+            return;
+          }
+          await enterUpmaStep(upmaStepIndex + 1);
+          return;
+        }
+
+        appendLog("Vision Agent", `Still watching ${step.label}.\\n${summary}`);
+        clearTimeout(upmaTimer);
+        upmaTimer = setTimeout(() => analyzeUpmaStep(false), UPMA_SAMPLE_MS);
+      } finally {
+        upmaBusy = false;
+      }
+    }
+
+    async function nextUpmaStep() {
+      if (!upmaRunning) {
+        appendLog("Upma Live", "Start Upma Live first.");
+        return;
+      }
+      await enterUpmaStep(upmaStepIndex + 1);
+    }
+
+    async function stopUpmaLive(emergency) {
+      upmaRunning = false;
+      clearTimeout(upmaTimer);
+      upmaTimer = null;
+      currentStep.textContent = "Stopped";
+      visionState.textContent = "Idle";
+      setAgentText(mainAgent, "Stopped");
+      setAgentText(stirAgent, emergency ? "Emergency stop" : "Stop");
+      await callApi(emergency ? "/api/wired-emergency" : "/api/wired-stop", {});
+      appendLog("Upma Live", emergency ? "Emergency stopped." : "Stopped.");
+    }
+
     function timeoutForAction(path, payload) {
       if (path.includes("browser-camera-check")) return 12000;
+      if (path.includes("browser-vision-check")) return 30000;
       if (path.includes("camera-check")) return Math.max(12000, (Number(payload.seconds) + 8) * 1000);
       if (path.includes("upma-mode")) return 25000;
       return 12000;
@@ -446,12 +665,14 @@ INDEX_HTML = """<!doctype html>
         const data = await response.json();
         appendLog(data.ok ? "OK" : "Problem", data.output || data.error || "");
         setState(data.ok ? "Ready" : "Needs Attention", data.ok ? "ok" : "error");
+        return data;
       } catch (error) {
         const message = error.name === "AbortError"
           ? "This step took too long and was stopped. Check camera permission/port, then try again."
           : String(error);
         appendLog("Error", message);
         setState("Error", "error");
+        return { ok: false, output: message };
       } finally {
         clearTimeout(timer);
         document.querySelectorAll("button").forEach(button => button.disabled = false);
@@ -480,6 +701,21 @@ INDEX_HTML = """<!doctype html>
 
       if (action === "upma-mode") {
         runUpmaMode();
+        return;
+      }
+
+      if (action === "upma-next") {
+        nextUpmaStep();
+        return;
+      }
+
+      if (action === "upma-analyze") {
+        analyzeUpmaStep(true);
+        return;
+      }
+
+      if (action === "upma-stop") {
+        stopUpmaLive(true);
         return;
       }
 
@@ -535,6 +771,7 @@ class KitchenRobotRequestHandler(BaseHTTPRequestHandler):
             "/api/upma-mode": self._v1_wired_run,
             "/api/camera-check": self._camera_check,
             "/api/browser-camera-check": self._browser_camera_check,
+            "/api/browser-vision-check": self._browser_vision_check,
             "/api/api-check": self._api_check,
             "/api/ble-scan": self._ble_scan,
             "/api/serial-scan": self._serial_scan,
@@ -660,6 +897,60 @@ class KitchenRobotRequestHandler(BaseHTTPRequestHandler):
                 f"JPEG size: {len(frame)} bytes.\n"
                 "This fixes the camera permission path for Testing 1."
             ),
+            "code": 0,
+        }
+
+    def _browser_vision_check(self, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            frame = _decode_browser_frame(str(payload.get("frame_jpeg") or ""))
+        except ValueError as exc:
+            return {"ok": False, "output": str(exc), "code": 1}
+
+        step = payload.get("step")
+        if not isinstance(step, dict):
+            return {"ok": False, "output": "Vision step payload is missing.", "code": 1}
+
+        settings = Settings.from_env(mock=False)
+        if not settings.openai_api_key:
+            return {"ok": False, "output": "OPENAI_API_KEY is missing from .env", "code": 1}
+
+        async def run() -> dict[str, Any]:
+            from kitchen_robot.services.openai_gateway import OpenAiGateway
+
+            gateway = OpenAiGateway(settings)
+            observation = await gateway.inspect_video_window(
+                recipe_step=step,
+                jpeg_frames=[frame],
+            )
+            return observation
+
+        try:
+            observation = asyncio.run(run())
+        except Exception as exc:
+            return {"ok": False, "output": f"Vision Agent failed: {exc}", "code": 1}
+
+        goal_met = bool(observation.get("goal_met", False))
+        confidence = float(observation.get("confidence", 0.0))
+        summary = str(observation.get("summary", ""))
+        safety_notes = str(observation.get("safety_notes", ""))
+        safety_stop = bool(observation.get("safety_stop", False))
+        normalized = {
+            "goal_met": goal_met,
+            "confidence": confidence,
+            "summary": summary,
+            "safety_notes": safety_notes,
+            "safety_stop": safety_stop,
+        }
+        return {
+            "ok": True,
+            "output": (
+                "Vision Agent checked one Chrome camera frame.\n"
+                f"Goal met: {goal_met}\n"
+                f"Confidence: {confidence:.2f}\n"
+                f"Summary: {summary}\n"
+                f"Safety: {safety_notes or 'none'}"
+            ),
+            "observation": normalized,
             "code": 0,
         }
 
