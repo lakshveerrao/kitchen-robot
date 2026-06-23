@@ -310,6 +310,7 @@ INDEX_HTML = """<!doctype html>
       <h2>Session</h2>
       <div class="grid">
         <button data-action="upma-mode" class="primary">Start Upma Live</button>
+        <button data-action="voice-control" class="primary">Start Voice Control</button>
         <button data-action="upma-next">Next Step</button>
         <button data-action="upma-analyze">Analyze Now</button>
         <button data-action="upma-stop" class="danger">Stop Upma Live</button>
@@ -387,6 +388,10 @@ INDEX_HTML = """<!doctype html>
     let upmaStepIndex = 0;
     let upmaTimer = null;
     let upmaBusy = false;
+    let upmaWaitingForAction = false;
+    let voiceRecognition = null;
+    let voiceActiveUntil = 0;
+    let voiceListening = false;
 
     const UPMA_SAMPLE_MS = 9000;
     const UPMA_CONFIDENCE_TO_ADVANCE = 0.65;
@@ -396,6 +401,7 @@ INDEX_HTML = """<!doctype html>
         label: "Prepare",
         instruction: "Place the kadai on heat and add oil.",
         human_action: "Add oil to the kadai.",
+        action_goal: "oil has been added to the kadai",
         stir_mode: null,
         vision_goal: "kadai visible with oil added"
       },
@@ -404,6 +410,7 @@ INDEX_HTML = """<!doctype html>
         label: "Temper",
         instruction: "Add mustard seeds, curry leaves, green chili, and onion.",
         human_action: "Add tempering ingredients.",
+        action_goal: "mustard seeds, curry leaves, green chili, and onion have been added",
         stir_mode: "slow",
         vision_goal: "onion starts softening"
       },
@@ -412,6 +419,7 @@ INDEX_HTML = """<!doctype html>
         label: "Roast suji",
         instruction: "Add suji. I will stir while it roasts until light brown.",
         human_action: "Add suji.",
+        action_goal: "suji has been added to the kadai",
         stir_mode: "medium",
         vision_goal: "suji turns light brown"
       },
@@ -420,6 +428,7 @@ INDEX_HTML = """<!doctype html>
         label: "Add water",
         instruction: "The suji looks ready. Add water slowly while I stir.",
         human_action: "Add water slowly.",
+        action_goal: "water has been added to the suji",
         stir_mode: "slow",
         vision_goal: "water added and mixture bubbling"
       },
@@ -428,6 +437,7 @@ INDEX_HTML = """<!doctype html>
         label: "Thicken",
         instruction: "Let it cook while I stir until it thickens.",
         human_action: "",
+        action_goal: "",
         stir_mode: "slow",
         vision_goal: "upma thickened and pulling together"
       },
@@ -436,6 +446,7 @@ INDEX_HTML = """<!doctype html>
         label: "Finish",
         instruction: "Upma looks done. Turn off the heat.",
         human_action: "Turn off heat.",
+        action_goal: "heat is turned off or cooking is finished",
         stir_mode: null,
         vision_goal: "finished upma consistency"
       }
@@ -465,6 +476,95 @@ INDEX_HTML = """<!doctype html>
 
     function setAgentText(element, text) {
       element.textContent = text;
+    }
+
+    function startVoiceControl() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        appendLog("Voice Agent", "Speech recognition is not available in this browser. Use Google Chrome.");
+        setAgentText(voiceAgent, "Not supported");
+        return;
+      }
+
+      if (voiceRecognition && voiceListening) {
+        appendLog("Voice Agent", "Voice control is already listening.");
+        return;
+      }
+
+      voiceRecognition = new SpeechRecognition();
+      voiceRecognition.continuous = true;
+      voiceRecognition.interimResults = false;
+      voiceRecognition.lang = "en-IN";
+
+      voiceRecognition.onstart = () => {
+        voiceListening = true;
+        voiceActiveUntil = Date.now() + 15000;
+        setAgentText(voiceAgent, "Listening");
+        appendLog("Voice Agent", "Listening. Say 'hey robot', then commands like start upma, added, analyze, next, stop.");
+      };
+
+      voiceRecognition.onend = () => {
+        voiceListening = false;
+        setAgentText(voiceAgent, "Voice idle");
+        if (upmaRunning) {
+          try {
+            voiceRecognition.start();
+          } catch (error) {
+            appendLog("Voice Agent", `Could not restart listening: ${error}`);
+          }
+        }
+      };
+
+      voiceRecognition.onerror = event => {
+        appendLog("Voice Agent Error", event.error || "unknown error");
+        setAgentText(voiceAgent, "Voice error");
+      };
+
+      voiceRecognition.onresult = event => {
+        const latest = event.results[event.results.length - 1];
+        const transcript = latest[0].transcript.trim();
+        handleVoiceText(transcript);
+      };
+
+      try {
+        voiceRecognition.start();
+      } catch (error) {
+        appendLog("Voice Agent Error", String(error));
+      }
+    }
+
+    function handleVoiceText(transcript) {
+      const text = transcript.toLowerCase();
+      appendLog("Voice Heard", transcript);
+      const woke = text.includes("hey robot") || text.includes("hai robot") || text.includes("robot");
+      if (woke) {
+        voiceActiveUntil = Date.now() + 15000;
+        setAgentText(voiceAgent, "Awake");
+      }
+
+      const active = woke || Date.now() < voiceActiveUntil;
+      if (!active) return;
+
+      voiceActiveUntil = Date.now() + 15000;
+      if (text.includes("emergency") || text.includes("stop now") || text === "stop" || text.includes("band karo")) {
+        stopUpmaLive(true);
+        return;
+      }
+      if (text.includes("start upma") || text.includes("make upma") || text.includes("upma start")) {
+        runUpmaMode();
+        return;
+      }
+      if (text.includes("added") || text.includes("i add") || text.includes("done") || text.includes("add kiya") || text.includes("डाल")) {
+        userSaysAdded();
+        return;
+      }
+      if (text.includes("analyze") || text.includes("check") || text.includes("देख")) {
+        analyzeUpmaStep(true);
+        return;
+      }
+      if (text.includes("next")) {
+        nextUpmaStep();
+      }
     }
 
     async function startBrowserCamera() {
@@ -548,17 +648,24 @@ INDEX_HTML = """<!doctype html>
       upmaStepIndex = Math.min(index, UPMA_RECIPE.length - 1);
       const step = currentUpmaStep();
       currentStep.textContent = `${step.label}: ${step.vision_goal}`;
-      visionState.textContent = "Waiting for sample";
+      upmaWaitingForAction = Boolean(step.human_action);
+      visionState.textContent = upmaWaitingForAction ? "Waiting for add" : "Waiting for sample";
       setAgentText(mainAgent, "Guiding");
       setAgentText(visionAgent, "Chrome camera ready");
 
       const message = step.human_action ? `${step.instruction} ${step.human_action}` : step.instruction;
       appendLog("Recipe Agent", `${step.label}\\n${message}`);
       speak(message);
-      await applyStirMode(step.stir_mode);
+      if (upmaWaitingForAction) {
+        setAgentText(mainAgent, "Waiting while user adds");
+        setAgentText(stirAgent, "Paused for adding");
+        await applyStirMode(null);
+      } else {
+        await applyStirMode(step.stir_mode);
+      }
 
       clearTimeout(upmaTimer);
-      upmaTimer = setTimeout(() => analyzeUpmaStep(false), 1200);
+      upmaTimer = setTimeout(() => analyzeUpmaStep(false), upmaWaitingForAction ? 3500 : 1200);
     }
 
     async function applyStirMode(stirMode) {
@@ -574,11 +681,13 @@ INDEX_HTML = """<!doctype html>
     async function analyzeUpmaStep(manual) {
       if (!upmaRunning || upmaBusy) return;
       upmaBusy = true;
-      const step = currentUpmaStep();
+      const step = { ...currentUpmaStep() };
+      step.phase = upmaWaitingForAction ? "awaiting_human_addition" : "cooking_stage";
+      step.active_goal = upmaWaitingForAction ? step.action_goal : step.vision_goal;
       try {
         await startBrowserCamera();
         const frameJpeg = captureBrowserFrame();
-        visionState.textContent = manual ? "Manual analyze" : "Sampling";
+        visionState.textContent = upmaWaitingForAction ? "Checking added" : (manual ? "Manual analyze" : "Sampling");
         setAgentText(visionAgent, "Sending one frame");
         const data = await callApi("/api/browser-vision-check", {
           frame_jpeg: frameJpeg,
@@ -602,14 +711,24 @@ INDEX_HTML = """<!doctype html>
         setAgentText(visionAgent, summary);
         setAgentText(mainAgent, observation.goal_met ? "Stage ready" : "Keep watching");
 
-        if (safetyStop || safetyNotes.toLowerCase().includes("hand")) {
+        if (isUnsafeObservation(safetyStop, safetyNotes, summary)) {
           appendLog("Safety Agent", `Possible unsafe condition: ${safetyNotes || summary}`);
-          speak("Safety stop. I am stopping the stirrer.");
+          speak("Safety stop. I see a possible hand, burning, smoke, or unsafe condition.");
           await stopUpmaLive(true);
           return;
         }
 
         if (observation.goal_met && confidence >= UPMA_CONFIDENCE_TO_ADVANCE) {
+          if (upmaWaitingForAction) {
+            upmaWaitingForAction = false;
+            appendLog("Main Agent", `I detected the add step for ${step.label}. Now I will stir and watch the cooking stage.\\n${summary}`);
+            speak("Okay, I detected it. I will stir now.");
+            await applyStirMode(currentUpmaStep().stir_mode);
+            clearTimeout(upmaTimer);
+            upmaTimer = setTimeout(() => analyzeUpmaStep(false), UPMA_SAMPLE_MS);
+            return;
+          }
+
           appendLog("Main Agent", `Goal met for ${step.label}. Moving to next step.\\n${summary}`);
           if (upmaStepIndex >= UPMA_RECIPE.length - 1) {
             await stopUpmaLive(false);
@@ -622,10 +741,25 @@ INDEX_HTML = """<!doctype html>
 
         appendLog("Vision Agent", `Still watching ${step.label}.\\n${summary}`);
         clearTimeout(upmaTimer);
-        upmaTimer = setTimeout(() => analyzeUpmaStep(false), UPMA_SAMPLE_MS);
+        upmaTimer = setTimeout(() => analyzeUpmaStep(false), upmaWaitingForAction ? 6000 : UPMA_SAMPLE_MS);
       } finally {
         upmaBusy = false;
       }
+    }
+
+    function isUnsafeObservation(safetyStop, safetyNotes, summary) {
+      const text = `${safetyNotes || ""} ${summary || ""}`.toLowerCase();
+      return safetyStop || ["hand", "finger", "burn", "burning", "smoke", "fire", "blackening", "cloth", "cable"].some(word => text.includes(word));
+    }
+
+    function userSaysAdded() {
+      if (!upmaRunning) {
+        appendLog("Voice Agent", "I heard added, but Upma Live is not running.");
+        return;
+      }
+      appendLog("Voice Agent", "User said the ingredient was added. I will verify with vision before stirring.");
+      speak("Okay, I will check and then stir.");
+      analyzeUpmaStep(true);
     }
 
     async function nextUpmaStep() {
@@ -638,6 +772,7 @@ INDEX_HTML = """<!doctype html>
 
     async function stopUpmaLive(emergency) {
       upmaRunning = false;
+      upmaWaitingForAction = false;
       clearTimeout(upmaTimer);
       upmaTimer = null;
       currentStep.textContent = "Stopped";
@@ -723,6 +858,11 @@ INDEX_HTML = """<!doctype html>
 
       if (action === "upma-mode") {
         runUpmaMode();
+        return;
+      }
+
+      if (action === "voice-control") {
+        startVoiceControl();
         return;
       }
 

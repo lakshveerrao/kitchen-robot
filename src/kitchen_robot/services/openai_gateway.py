@@ -54,7 +54,10 @@ class OpenAiGateway:
             "the current upma recipe step. Return compact JSON only with keys: "
             "goal_met boolean, confidence number 0-1, summary string, safety_notes string, "
             "safety_stop boolean. Set safety_stop true if a hand, face, cloth, cable, "
-            "or unsafe object is near the pan or stirrer boundary. "
+            "or unsafe object is near the pan or stirrer boundary, or if food looks burning, "
+            "smoking, blackening, overflowing, or dangerously dry. If phase is "
+            "awaiting_human_addition, goal_met means the requested ingredient/action appears done; "
+            "if phase is cooking_stage, goal_met means the cooking stage active_goal is reached. "
             f"Current step: {json.dumps(recipe_step)}"
         )
 
