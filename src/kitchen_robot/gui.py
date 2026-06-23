@@ -3,15 +3,18 @@ import asyncio
 import contextlib
 import io
 import json
+import os
+from pathlib import Path
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import subprocess
+import sys
 from typing import Any
 from urllib.parse import urlparse
 
 from kitchen_robot.config import Settings
 from kitchen_robot.operator import (
     ble_scan,
-    camera_check,
     serial_scan,
     stirrer_command,
     wired_stirrer_command,
@@ -303,22 +306,36 @@ INDEX_HTML = """<!doctype html>
       log.scrollTop = log.scrollHeight;
     }
 
+    function timeoutForAction(path, payload) {
+      if (path.includes("camera-check")) return Math.max(12000, (Number(payload.seconds) + 8) * 1000);
+      if (path.includes("upma-mode")) return 25000;
+      return 12000;
+    }
+
     async function callApi(path, payload = {}) {
       setState("Running", "busy");
       document.querySelectorAll("button").forEach(button => button.disabled = true);
+      const controller = new AbortController();
+      const timeoutMs = timeoutForAction(path, payload);
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
       try {
         const response = await fetch(path, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
+          body: JSON.stringify(payload),
+          signal: controller.signal
         });
         const data = await response.json();
         appendLog(data.ok ? "OK" : "Problem", data.output || data.error || "");
         setState(data.ok ? "Ready" : "Needs Attention", data.ok ? "ok" : "error");
       } catch (error) {
-        appendLog("Error", String(error));
+        const message = error.name === "AbortError"
+          ? "This step took too long and was stopped. Check camera permission/port, then try again."
+          : String(error);
+        appendLog("Error", message);
         setState("Error", "error");
       } finally {
+        clearTimeout(timer);
         document.querySelectorAll("button").forEach(button => button.disabled = false);
       }
     }
@@ -424,25 +441,27 @@ class KitchenRobotRequestHandler(BaseHTTPRequestHandler):
         return _capture_async(run())
 
     def _v1_wired_run(self, payload: dict[str, Any]) -> dict[str, Any]:
-        async def run() -> int:
-            from kitchen_robot.orchestrator import Orchestrator
-
-            settings = Settings.from_env(mock=False)
-            orchestrator = Orchestrator(settings=settings, recipe_id="upma")
-            await orchestrator.run()
-            return 0
-
-        return _capture_async(run())
+        return _run_cli(
+            ["run", "--recipe", "upma"],
+            timeout=22,
+            timeout_message=(
+                "Upma mode took too long and was stopped.\n"
+                "Most likely reason: camera capture, OpenAI vision, or ESP32 serial did not answer.\n"
+                "First run Check Camera and Status, then try Upma Making Mode again."
+            ),
+        )
 
     def _camera_check(self, payload: dict[str, Any]) -> dict[str, Any]:
-        async def run() -> int:
-            settings = Settings.from_env(mock=False).with_overrides(
-                camera_index=int(payload.get("camera_index", 0)),
-                video_window_seconds=float(payload.get("seconds", 2)),
-            )
-            return await camera_check(settings)
-
-        return _capture_async(run())
+        camera_index = str(int(payload.get("camera_index", 0)))
+        seconds = str(float(payload.get("seconds", 2)))
+        return _run_cli(
+            ["camera-check", "--camera-index", camera_index, "--seconds", seconds],
+            timeout=max(8, float(seconds) + 6),
+            timeout_message=(
+                "Camera check took too long and was stopped.\n"
+                "Most likely reason: macOS camera permission, wrong camera index, or another app is using the camera."
+            ),
+        )
 
     def _api_check(self, payload: dict[str, Any]) -> dict[str, Any]:
         settings = Settings.from_env(mock=False)
@@ -545,6 +564,34 @@ def _capture_async(coro: Any) -> dict[str, Any]:
         return {"ok": False, "output": output}
 
     return {"ok": code == 0, "output": buffer.getvalue(), "code": code}
+
+
+def _run_cli(args: list[str], timeout: float, timeout_message: str) -> dict[str, Any]:
+    project_root = Path(__file__).resolve().parents[2]
+    env = os.environ.copy()
+    src_path = str(project_root / "src")
+    env["PYTHONPATH"] = f"{src_path}{os.pathsep}{env['PYTHONPATH']}" if env.get("PYTHONPATH") else src_path
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "kitchen_robot", *args],
+            cwd=project_root,
+            env=env,
+            text=True,
+            capture_output=True,
+            timeout=timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        output_parts = [timeout_message]
+        if exc.stdout:
+            output_parts.append(str(exc.stdout))
+        if exc.stderr:
+            output_parts.append(str(exc.stderr))
+        return {"ok": False, "output": "\n".join(output_parts), "code": 124}
+
+    output = "\n".join(part for part in (result.stdout, result.stderr) if part)
+    return {"ok": result.returncode == 0, "output": output, "code": result.returncode}
 
 
 def add_gui_parser(subparsers: argparse._SubParsersAction) -> None:
